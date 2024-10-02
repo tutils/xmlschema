@@ -1,0 +1,1002 @@
+package render
+
+import (
+	"encoding/xml"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/tutils/xmlschema/proto"
+	"github.com/tutils/xmlschema/tplcontainer"
+)
+
+const (
+	XMLSchema = "http://www.w3.org/2001/XMLSchema"
+	XMLNS1998 = "http://www.w3.org/XML/1998/namespace"
+	XMLNS2001 = "http://www.w3.org/2001/xml.xsd"
+)
+
+var (
+	ingoreNamepace = map[string]struct{}{
+		XMLSchema: {},
+		XMLNS1998: {},
+		XMLNS2001: {},
+	}
+
+	ingorePrefix = map[string]struct{}{
+		"xml": {},
+	}
+)
+
+type SymbolMap struct {
+	// Namepace string
+	// TopElements     *tplcontainer.SequenceMap[string, *proto.Element]
+	// ComplexTypes    *tplcontainer.SequenceMap[string, *proto.ComplexType]
+	// SimpleTypes     *tplcontainer.SequenceMap[string, *proto.SimpleType]
+	// AttributeGroups *tplcontainer.SequenceMap[string, *proto.Group]
+	// ElementGroups   *tplcontainer.SequenceMap[string, *proto.Group]
+
+	// 任意类型顺序映射[符号名, 数据]
+	AnyMap *tplcontainer.SequenceMap[string, any]
+}
+
+func NewSymbolMap() *SymbolMap {
+	return &SymbolMap{
+		AnyMap: tplcontainer.NewSequenceMap[string, any](),
+	}
+}
+
+func (s *SymbolMap) addConplexType(ct *proto.ComplexType) {
+	if len(ct.Name) == 0 {
+		panic("empty complexType name")
+	}
+	s.AnyMap.Set(ct.Name, ct)
+}
+
+func (s *SymbolMap) addSimpleType(st *proto.SimpleType) {
+	if len(st.Name) == 0 {
+		panic("empty simpleType name")
+	}
+	s.AnyMap.Set(st.Name, st)
+}
+
+func (s *SymbolMap) addElement(elem *proto.Element) {
+	if len(elem.Name) == 0 {
+		panic("empty element name")
+	}
+	s.AnyMap.Set(elem.Name, elem)
+}
+
+func (s *SymbolMap) addGroup(grp *proto.Group) {
+	if len(grp.Name) == 0 {
+		panic("empty group name")
+	}
+	s.AnyMap.Set(grp.Name, grp)
+}
+
+func (s *SymbolMap) addAttribute(attr *proto.Attribute) {
+	if len(attr.Name) == 0 {
+		panic("empty attribute name")
+	}
+	s.AnyMap.Set(attr.Name, attr)
+}
+
+func (s *SymbolMap) addAttributeGroup(attrGrp *proto.AttributeGroup) {
+	if len(attrGrp.Name) == 0 {
+		panic("empty attributeGroup name")
+	}
+	s.AnyMap.Set(attrGrp.Name, attrGrp)
+}
+
+func (s *SymbolMap) addSchema(schema *proto.Schema) {
+	for _, ct := range schema.ComplexTypeList {
+		s.addConplexType(ct)
+	}
+
+	for _, st := range schema.SimpleTypeList {
+		s.addSimpleType(st)
+	}
+
+	for _, elem := range schema.ElementList {
+		s.addElement(elem)
+	}
+
+	for _, grp := range schema.GroupList {
+		s.addGroup(grp)
+	}
+
+	for _, attr := range schema.AttributeList {
+		s.addAttribute(attr)
+	}
+
+	for _, attrGrp := range schema.AttributeGroupList {
+		s.addAttributeGroup(attrGrp)
+	}
+}
+
+func (s *SymbolMap) addSymbolMap(symbs *SymbolMap) {
+	for _, name := range symbs.AnyMap.Order() {
+		if _, ok := s.AnyMap.Get(name); ok {
+			panic("duplicate name")
+		}
+		a := symbs.AnyMap.MustGet(name)
+		s.AnyMap.Set(name, a)
+	}
+}
+
+// Merge 将符号表合并。允许重复的符号，可选择是否覆盖重复的符号
+func (s *SymbolMap) Merge(symbs *SymbolMap, overwrite bool) {
+	for _, name := range symbs.AnyMap.Order() {
+		v := symbs.AnyMap.MustGet(name)
+		if _, ok := s.AnyMap.Get(name); !ok || overwrite {
+			s.AnyMap.Set(name, v)
+		}
+	}
+}
+
+// Add 像符号表中添加符号，符号不可重复
+func (s *SymbolMap) Add(v any) {
+	switch typ := v.(type) {
+	case *proto.ComplexType:
+		s.addConplexType(typ)
+
+	case *proto.SimpleType:
+		s.addSimpleType(typ)
+
+	case *proto.Element:
+		s.addElement(typ)
+
+	case *proto.Group:
+		s.addGroup(typ)
+
+	case *proto.Attribute:
+		s.addAttribute(typ)
+
+	case *proto.AttributeGroup:
+		s.addAttributeGroup(typ)
+
+	case *proto.Schema:
+		s.addSchema(typ)
+
+	case *SymbolMap:
+		s.addSymbolMap(typ)
+
+	default:
+		panic("invalid type")
+	}
+}
+
+func checkComplexType(ctx *Context, ct *proto.ComplexType) bool {
+	// simpleContent | complexContent | (attribute, attributeGroup)
+	hasCheck := false
+	if len(ct.AttributeList) > 0 {
+		for _, attr := range ct.AttributeList {
+			if !checkAttribute(ctx, attr) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+	if len(ct.AttributeGroupList) > 0 {
+		for _, attrGrp := range ct.AttributeGroupList {
+			if !checkAttributeGroup(ctx, attrGrp) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+	if ct.Sequence != nil {
+		if !checkSequence(ctx, ct.Sequence) {
+			return false
+		}
+		hasCheck = true
+	}
+	if ct.Choice != nil {
+		if !checkChoice(ctx, ct.Choice) {
+			return false
+		}
+		hasCheck = true
+	}
+	if ct.Group != nil {
+		if !checkGroup(ctx, ct.Group) {
+			return false
+		}
+		hasCheck = true
+	}
+	if ct.All != nil {
+		if !checkAll(ctx, ct.All) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if ct.SimpleContent != nil {
+		if hasCheck {
+			panic("multi child")
+		}
+		if !checkSimpleContent(ctx, ct.SimpleContent) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if ct.ComplexContent != nil {
+		if hasCheck {
+			panic("multi child")
+		}
+		if !checkComplexContent(ctx, ct.ComplexContent) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	return true
+}
+
+func checkSimpleType(ctx *Context, st *proto.SimpleType) bool {
+	// Restriction | Union | List
+	hasCheck := false
+	if st.Union != nil {
+		if !checkUnion(ctx, st.Union) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if st.List != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		if !checkList(ctx, st.List) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if st.Restriction != nil {
+		if !checkRestriction(ctx, st.Restriction) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if hasCheck {
+		return true
+	}
+
+	panic("empty simpleType")
+}
+
+func checkElement(ctx *Context, elem *proto.Element) bool {
+	// Type | Ref
+	if len(elem.Type) != 0 && len(elem.Ref) != 0 {
+		panic("multi attr")
+	}
+
+	if len(elem.Type) > 0 {
+		return checkName(ctx, elem.Type)
+	} else if len(elem.Ref) > 0 {
+		return checkName(ctx, elem.Ref)
+	}
+
+	if elem.ComplexType != nil {
+		return checkComplexType(ctx, elem.ComplexType)
+	}
+
+	panic("empty element attr")
+}
+
+func checkAttribute(ctx *Context, attr *proto.Attribute) bool {
+	// Type | Ref
+	hasCheck := false
+	if len(attr.Type) > 0 {
+		if !checkName(ctx, attr.Type) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if len(attr.Ref) > 0 {
+		if hasCheck {
+			panic("multi attr")
+		}
+		if !checkName(ctx, attr.Ref) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if attr.SimpleType != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		if !checkSimpleType(ctx, attr.SimpleType) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if hasCheck {
+		return true
+	}
+
+	if attr.Name == "value" {
+		return true
+	}
+
+	panic("empty attribute attr")
+}
+
+func checkGroup(ctx *Context, grp *proto.Group) bool {
+	if len(grp.Name) != 0 && len(grp.Ref) != 0 {
+		panic("multi attr")
+	}
+
+	if len(grp.Name) > 0 {
+		// Group Define
+		// Choice | Sequence
+		nestHasCheck := false
+		if grp.Choice != nil {
+			if !checkChoice(ctx, grp.Choice) {
+				return false
+			}
+			nestHasCheck = true
+		}
+
+		if grp.Sequence != nil {
+			if nestHasCheck {
+				panic("multi attr")
+			}
+			if !checkSequence(ctx, grp.Sequence) {
+				return false
+			}
+			nestHasCheck = true
+		}
+
+		if nestHasCheck {
+			return true
+		}
+
+		panic("empty group")
+	} else if len(grp.Ref) > 0 {
+		// Group Ref
+		return checkName(ctx, grp.Ref)
+	}
+
+	panic("empty group attr")
+}
+
+func checkAttributeGroup(ctx *Context, attrGrp *proto.AttributeGroup) bool {
+	if len(attrGrp.Name) != 0 && len(attrGrp.Ref) != 0 {
+		panic("multi attr")
+	}
+
+	if len(attrGrp.Name) > 0 {
+		// AttributeGroup Define
+		for _, attr := range attrGrp.AttributeList {
+			if !checkAttribute(ctx, attr) {
+				return false
+			}
+		}
+		for _, nestAttrGrp := range attrGrp.AttributeGroupList {
+			if !checkAttributeGroup(ctx, nestAttrGrp) {
+				return false
+			}
+		}
+		return true
+	} else if len(attrGrp.Ref) > 0 {
+		// AttributeGroup Ref
+		return checkName(ctx, attrGrp.Ref)
+	}
+
+	panic("empty attributeGroup attr")
+}
+
+func checkChoice(ctx *Context, ch *proto.Choice) bool {
+	hasCheck := false
+	if ch.Sequence != nil {
+		if !checkSequence(ctx, ch.Sequence) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if ch.Choice != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		if !checkChoice(ctx, ch.Choice) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if ch.Any != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		hasCheck = true
+	}
+
+	if len(ch.ElementList) > 0 {
+		for _, elem := range ch.ElementList {
+			if !checkElement(ctx, elem) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+
+	if len(ch.GroupList) > 0 {
+		for _, grp := range ch.GroupList {
+			if !checkGroup(ctx, grp) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+
+	if hasCheck {
+		return true
+	}
+
+	panic("empty choice")
+}
+
+func checkSequence(ctx *Context, seq *proto.Sequence) bool {
+	hasCheck := false
+	if len(seq.ChoiceList) > 0 {
+		for _, ch := range seq.ChoiceList {
+			if !checkChoice(ctx, ch) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+
+	if len(seq.AnyList) > 0 {
+		if hasCheck {
+			panic("multi child type")
+		}
+		hasCheck = true
+	}
+
+	if len(seq.ElementList) > 0 {
+		for _, elem := range seq.ElementList {
+			if !checkElement(ctx, elem) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+
+	if len(seq.GroupList) > 0 {
+		for _, grp := range seq.GroupList {
+			if !checkGroup(ctx, grp) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+
+	return true
+}
+
+func checkUnion(ctx *Context, uni *proto.Union) bool {
+	sli := strings.Split(uni.MemberTypes, " ")
+	if len(sli) == 0 {
+		panic("empty memberTypes")
+	}
+
+	for _, typ := range sli {
+		if !checkName(ctx, typ) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkList(ctx *Context, lst *proto.List) bool {
+	if len(lst.ItemType) == 0 {
+		panic("empty itemType")
+	}
+
+	return checkName(ctx, lst.ItemType)
+}
+
+func checkAll(ctx *Context, all *proto.All) bool {
+	if len(all.ElementList) == 0 {
+		panic("empty element")
+	}
+
+	for _, elem := range all.ElementList {
+		if !checkElement(ctx, elem) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkSimpleContent(ctx *Context, sc *proto.SimpleContent) bool {
+	if sc.Extension == nil {
+		panic("empty extension")
+	}
+
+	return checkExtension(ctx, sc.Extension)
+}
+
+func checkComplexContent(ctx *Context, cc *proto.ComplexContent) bool {
+	hasCheck := false
+	if cc.Extension != nil {
+		if !checkExtension(ctx, cc.Extension) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	// ext
+	if cc.Restriction != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		if !checkRestriction(ctx, cc.Restriction) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if hasCheck {
+		return true
+	}
+
+	panic("empty extension")
+}
+
+func checkExtension(ctx *Context, ext *proto.Extension) bool {
+	hasCheck := false
+	if ext.Sequence != nil {
+		if !checkSequence(ctx, ext.Sequence) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if ext.Choice != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		if !checkChoice(ctx, ext.Choice) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if ext.Group != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		if !checkGroup(ctx, ext.Group) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if len(ext.Base) > 0 {
+		if !checkName(ctx, ext.Base) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if len(ext.AttributeList) > 0 {
+		for _, attr := range ext.AttributeList {
+			if !checkAttribute(ctx, attr) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+
+	if len(ext.AttributeGroupList) > 0 {
+		for _, attrGrp := range ext.AttributeGroupList {
+			if !checkAttributeGroup(ctx, attrGrp) {
+				return false
+			}
+		}
+		hasCheck = true
+	}
+
+	if hasCheck {
+		return true
+	}
+
+	panic("empty extension")
+}
+
+func checkRestriction(ctx *Context, rest *proto.Restriction) bool {
+	hasCheck := false
+	if len(rest.Base) > 0 {
+		if !checkName(ctx, rest.Base) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if rest.SimpleType != nil {
+		if hasCheck {
+			panic("multi child type")
+		}
+		if !checkSimpleType(ctx, rest.SimpleType) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if hasCheck {
+		return true
+	}
+
+	panic("empty restriction")
+}
+
+func checkSchema(ctx *Context, schema *proto.Schema) bool {
+	for _, attr := range schema.AttributeList {
+		// fmt.Println(attr.Name)
+		if !checkAttribute(ctx, attr) {
+			return false
+		}
+	}
+
+	for _, ct := range schema.ComplexTypeList {
+		// fmt.Println(ct.Name)
+		if !checkComplexType(ctx, ct) {
+			return false
+		}
+	}
+
+	for _, st := range schema.SimpleTypeList {
+		// fmt.Println(st.Name)
+		if !checkSimpleType(ctx, st) {
+			return false
+		}
+	}
+
+	for _, elem := range schema.ElementList {
+		// fmt.Println(elem.Name)
+		if !checkElement(ctx, elem) {
+			return false
+		}
+	}
+
+	for _, grp := range schema.GroupList {
+		// fmt.Println(grp.Name)
+		if !checkGroup(ctx, grp) {
+			return false
+		}
+	}
+
+	for _, attrGrp := range schema.AttributeGroupList {
+		// fmt.Println(attrGrp.Name)
+		if !checkAttributeGroup(ctx, attrGrp) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Symbol 根据名字获取符号的前缀和结构。无论成功失败，前缀都将会正确返回
+// 名字应该包含前缀，如果没有前缀，默认从顶层命名空间中寻找符号
+func Symbol(ctx *Context, name string) (string, any, bool) {
+	sli := strings.Split(name, ":")
+	var prefix, local string
+	switch len(sli) {
+	case 1:
+		prefix = ""
+		local = name
+	case 2:
+		prefix = sli[0]
+		local = sli[1]
+	default:
+		panic("invalid name")
+	}
+
+	ns, ok := ctx.prefixMap[prefix]
+	if !ok {
+		return prefix, nil, false
+	}
+
+	symbs, ok := ctx.muxSymbMap.Get(ns)
+	if !ok {
+		return prefix, nil, false
+	}
+
+	symb, ok := symbs.AnyMap.Get(local)
+	if !ok {
+		return prefix, nil, false
+	}
+
+	return prefix, symb, true
+}
+
+func checkName(ctx *Context, name string) bool {
+	prefix, _, ok := Symbol(ctx, name)
+	if ok {
+		return true
+	}
+
+	if _, ok := ingorePrefix[prefix]; ok {
+		return true
+	}
+
+	ns := ctx.prefixMap[prefix]
+	if len(ns) == 0 {
+		panic("invalid namespace")
+	}
+
+	if _, ok := ingoreNamepace[ns]; ok {
+		return true
+	}
+
+	return false
+}
+
+// Check 深度检查当前节点的合法性
+func Check(ctx *Context, node any) bool {
+	switch typ := node.(type) {
+	case *proto.ComplexType:
+		return checkComplexType(ctx, typ)
+
+	case *proto.SimpleType:
+		return checkSimpleType(ctx, typ)
+
+	case *proto.Element:
+		return checkElement(ctx, typ)
+
+	case *proto.Attribute:
+		return checkAttribute(ctx, typ)
+
+	case *proto.Group:
+		return checkGroup(ctx, typ)
+
+	case *proto.AttributeGroup:
+		return checkAttributeGroup(ctx, typ)
+
+	case *proto.Schema:
+		return checkSchema(ctx, typ)
+
+	default:
+		panic("invalid type")
+	}
+}
+
+type cacheRecord struct {
+	schema *proto.Schema
+	symbs  *SymbolMap
+}
+
+type SchemaLib struct {
+	// [namespace, schema]
+	NamespaceSchemaMap map[string]*SymbolMap
+
+	// [file, record]
+	cache map[string]*cacheRecord
+}
+
+func NewSchemaLib() *SchemaLib {
+	return &SchemaLib{
+		NamespaceSchemaMap: make(map[string]*SymbolMap),
+		cache:              make(map[string]*cacheRecord),
+	}
+}
+
+type loadState int
+
+const (
+	unloaded loadState = iota // 未加载
+	loading                   // 加载中
+	loaded                    // 已加载
+)
+
+type Context struct {
+	loadRecord map[string]loadState
+
+	// [namespace, *Schema], muxSymbMap 用于校验引用是否合法
+	muxSymbMap *tplcontainer.SequenceMap[string, *SymbolMap]
+	prefixMap  map[string]string
+}
+
+func NewContext() *Context {
+	return &Context{
+		loadRecord: make(map[string]loadState),
+		muxSymbMap: tplcontainer.NewSequenceMap[string, *SymbolMap](),
+		prefixMap:  make(map[string]string),
+	}
+}
+
+// parseSchemaFile 只解析当前文件，不包含import和include
+func (lib *SchemaLib) parseSchemaFile(name string) *cacheRecord {
+	// dir := filepath.Dir(name)
+	// name = filepath.Join(dir, filepath.Base(name))
+
+	if rec, ok := lib.cache[name]; ok {
+		fmt.Println("loading schema (cache):", name)
+		return rec
+	}
+	fmt.Println("loading schema:", name)
+
+	fp, err := os.Open(name)
+	if err != nil {
+		panic(err)
+	}
+	defer fp.Close()
+
+	dec := xml.NewDecoder(fp)
+	var schema proto.Schema
+	if err := dec.Decode(&schema); err != nil {
+		panic(err)
+	}
+
+	symbs := NewSymbolMap()
+	symbs.Add(&schema)
+
+	rec := &cacheRecord{
+		schema: &schema,
+		symbs:  symbs,
+	}
+	lib.cache[name] = rec
+
+	return rec
+}
+
+// buildContextSymbolMap 递归遍历schema定义文件，构建上文符号表，返回根节点的原始schema数据
+func (lib *SchemaLib) buildContextSymbolMap(ctx *Context, name string) *proto.Schema {
+	switch ctx.loadRecord[name] {
+	case loading:
+		fmt.Println("cycle symbs:", name)
+		return nil // lib.cache[name].schema
+	case loaded:
+		return nil // lib.cache[name].schema
+	}
+	defer func() {
+		ctx.loadRecord[name] = loaded
+	}()
+	ctx.loadRecord[name] = loading
+
+	// 解析当前节点，将当前文件的符号表（不含外部文件的符号），添加到上下文符号表（含有外部符号）
+	rec := lib.parseSchemaFile(name)
+	ns := namespace(rec.schema)
+	symbs, ok := ctx.muxSymbMap.Get(ns)
+	if !ok {
+		symbs = NewSymbolMap()
+		ctx.muxSymbMap.Set(ns, symbs)
+	}
+	symbs.Add(rec.symbs)
+
+	dir := filepath.Dir(name)
+
+	// 从ImportList递归遍历schema定义文件
+	for _, imp := range rec.schema.ImportList {
+		if len(imp.Namespace) == 0 {
+			panic("empty namespace")
+		}
+
+		if len(imp.SchemaLocation) > 0 {
+			impFile := filepath.Join(dir, imp.SchemaLocation)
+			if _, ok := ingoreNamepace[imp.SchemaLocation]; ok {
+				// 对某些命名空间进行忽略，通常是底层xml schema
+				continue
+			}
+			lib.buildContextSymbolMap(ctx, impFile)
+		}
+	}
+
+	// 从IncludeList递归遍历schema定义文件
+	for _, inc := range rec.schema.IncludeList {
+		if len(inc.SchemaLocation) > 0 {
+			incFile := filepath.Join(dir, inc.SchemaLocation)
+			if _, ok := ingoreNamepace[inc.SchemaLocation]; ok {
+				// 对某些命名空间进行忽略，通常是底层xml schema
+				continue
+			}
+			lib.buildContextSymbolMap(ctx, incFile)
+		}
+	}
+
+	return rec.schema
+}
+
+// buildPrefixMap 构建前缀到命名空间的映射
+// 如："p" -> "http://schemas.openxmlformats.org/presentationml/2006/main"
+func buildPrefixMap(ctx *Context, schema *proto.Schema) {
+	for _, xmlns := range schema.XmlnsList {
+		ctx.prefixMap[xmlns.Name.Local] = xmlns.Value
+	}
+
+	// 从ImportList更新prefixMap
+	for _, imp := range schema.ImportList {
+		if len(imp.Namespace) == 0 {
+			panic("empty namespace")
+		}
+
+		if len(imp.Id) > 0 {
+			// 如果import有id属性，为id增加一条前缀映射
+			ctx.prefixMap[imp.Id] = imp.Namespace
+		}
+	}
+
+	ctx.prefixMap[""] = namespace(schema)
+}
+
+func namespace(schema *proto.Schema) string {
+	// 获取当前schema顶层的命名空间，使用空前缀可以进行映射
+	var xmlns string
+	if len(schema.Xmlns) > 0 {
+		// 当存在显示xmlns属性时，将该属性值作为命名空间
+		xmlns = schema.Xmlns
+	} else if len(schema.XMLName.Space) > 0 {
+		// 如果不存在xmlns属性时，使用顶层元素的前缀对应的命名空间
+		xmlns = schema.XMLName.Space
+	} else {
+		panic("empty xmlns")
+	}
+	return xmlns
+}
+
+// LoadSchemaFiles 将列表中的文件加载到内存，返回本次加载的上下文
+// 每次调用会产生独立的上下文，可通过这个上下文在局部查找符号
+func (lib *SchemaLib) LoadSchemaFiles(names ...string) *Context {
+	ctx := NewContext()
+
+	for _, name := range names {
+		dir := filepath.Dir(name)
+		name = filepath.Join(dir, filepath.Base(name))
+
+		schema := lib.buildContextSymbolMap(ctx, name)
+
+		buildPrefixMap(ctx, schema)
+
+		// 校验引用
+		if !Check(ctx, schema) {
+			panic("invalid schema")
+		}
+	}
+
+	// 将本次产生的上下文中的符号表合并至schemaLib中
+	for _, ns := range ctx.muxSymbMap.Order() {
+		symbs := ctx.muxSymbMap.MustGet(ns)
+		symbs, ok := lib.NamespaceSchemaMap[ns]
+		if !ok {
+			symbs = NewSymbolMap()
+			lib.NamespaceSchemaMap[ns] = symbs
+		}
+		symbs.Merge(symbs, false)
+	}
+
+	return ctx
+}
+
+// 遍历某个文件夹下的全部schema文件
+func LoadAllSchema() {
+	lib := NewSchemaLib()
+	ctx := lib.LoadSchemaFiles(
+		"data/schemas/ooxml/pml-slide.xsd",
+		"data/schemas/ooxml/pml-presentation.xsd",
+	)
+	prefix, symb, ok := Symbol(ctx, "p:sld")
+	fmt.Println(prefix, symb, ok)
+	prefix, symb, ok = Symbol(ctx, "p:presentation")
+	fmt.Println(prefix, symb, ok)
+	// filepath.Walk("schemas", func(path string, info fs.FileInfo, _ error) error {
+	// 	if info.IsDir() {
+	// 		return nil
+	// 	}
+
+	// 	lib.LoadSchemaFiles(path)
+
+	// 	return nil
+	// })
+
+	fmt.Println("exit.")
+}
