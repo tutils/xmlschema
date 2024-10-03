@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	XMLSchema = "http://www.w3.org/2001/XMLSchema"
-	XMLNS1998 = "http://www.w3.org/XML/1998/namespace"
-	XMLNS2001 = "http://www.w3.org/2001/xml.xsd"
+	XMLSchema = "http://www.w3.org/2001/XMLSchema"  // namespace
+	XMLNS2001 = "http://www.w3.org/2001/xml.xsd"  // location
+	XMLNS1998 = "http://www.w3.org/XML/1998/namespace"  // namespace
 )
 
 var (
@@ -791,13 +791,6 @@ func NewSchemaLib() *SchemaLib {
 	}
 }
 
-type loadState int
-
-const (
-	unloaded loadState = iota // 未加载
-	loading                   // 加载中
-	loaded                    // 已加载
-)
 
 type Context struct {
 	loadRecord map[string]loadState
@@ -850,7 +843,7 @@ func (lib *SchemaLib) parseSchemaFile(name string) *cacheRecord {
 	return rec
 }
 
-// buildContextSymbolMap 递归遍历schema定义文件，构建上文符号表，返回根节点的原始schema数据
+// buildContextSymbolMap 递归遍历schema定义文件，构建上下文符号表，返回根节点的原始schema数据
 func (lib *SchemaLib) buildContextSymbolMap(ctx *Context, name string) *proto.Schema {
 	switch ctx.loadRecord[name] {
 	case loading:

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/tutils/xmlschema/data"
 	"github.com/tutils/xmlschema/tplcontainer"
 )
 
@@ -100,8 +101,8 @@ func NewContext() *Context {
 }
 
 // ScanAllSchemaFiles 遍历指定目录下的全部xml schema文件，用于探测schema中使用的元素的数据结构
-func ScanAllSchemaFiles(ctx *Context) {
-	filepath.Walk("data/schemas", func(path string, info fs.FileInfo, _ error) error {
+func ScanAllSchemaFiles(ctx *Context, path string) {
+	filepath.Walk(path, func(path string, info fs.FileInfo, _ error) error {
 		if info.IsDir() {
 			return nil
 		}
@@ -276,9 +277,9 @@ func genBaseCodeFile(ctx *Context) *BaseCodeFile {
 }
 
 func Render(baseCode *BaseCodeFile, name string) error {
-	tplFileName := filepath.Join("data/templates", name+".tpl")
+	tplFileName := filepath.Join("templates", name+".tpl")
 	outFileName := filepath.Join("output", name)
-	bs, err := os.ReadFile(tplFileName)
+	bs, err := data.Content.ReadFile(tplFileName)
 	if err != nil {
 		panic(err)
 	}

@@ -107,7 +107,7 @@ func TestSample() {
 
 func main() {
 	ctx := boot.NewContext()
-	boot.ScanAllSchemaFiles(ctx)
+	boot.ScanAllSchemaFiles(ctx, "data/schemas")
 	boot.RenderAll(ctx)
 	// tree.TestProto()
 	// tree.TestProtoETree()
