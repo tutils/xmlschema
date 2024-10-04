@@ -40,6 +40,9 @@ type {{$titleCase}} struct {
                     {{- end}}
 {{""}}
                 {{- end}}
+                {{- if $def.IsMixed}}
+    XMLContent xml.CharData `xml:",chardata"`
+                {{- end}}
                 {{- if gt (len $def.Elems) 0}}
                     {{- range $elem := $def.Elems}}
                         {{- if $elem.IsArray}}

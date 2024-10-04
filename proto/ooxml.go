@@ -18,6 +18,8 @@ type A struct {
 
 	Href string `xml:"href,attr,omitempty"`
 	Name string `xml:"name,attr,omitempty"`
+
+	XMLContent xml.CharData `xml:",chardata"`
 }
 
 // code
@@ -33,9 +35,10 @@ type Code = string
 type P struct {
 	XMLName xml.Name
 
-	Em       *Em     `xml:"em"`
-	AList    []*A    `xml:"a"`
-	CodeList []*Code `xml:"code"`
+	XMLContent xml.CharData `xml:",chardata"`
+	Em         *Em          `xml:"em"`
+	AList      []*A         `xml:"a"`
+	CodeList   []*Code      `xml:"code"`
 }
 
 // h1
@@ -144,8 +147,9 @@ type Documentation struct {
 
 	Source string `xml:"source,attr,omitempty"`
 
-	PList   []*P   `xml:"p"`
-	DivList []*Div `xml:"div"`
+	XMLContent xml.CharData `xml:",chardata"`
+	PList      []*P         `xml:"p"`
+	DivList    []*Div       `xml:"div"`
 }
 
 // hasFacet
@@ -519,7 +523,8 @@ type Pattern struct {
 	Value string `xml:"value,attr,omitempty"`
 	Id    string `xml:"id,attr,omitempty"`
 
-	Annotation *Annotation `xml:"annotation"`
+	XMLContent xml.CharData `xml:",chardata"`
+	Annotation *Annotation  `xml:"annotation"`
 }
 
 // minLength

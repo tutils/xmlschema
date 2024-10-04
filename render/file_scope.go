@@ -103,7 +103,7 @@ func (fs *FileScope) loadSchema(name string, cache FileCache) {
 	if cache == nil {
 		cache = FileCache{
 			XMLSchemaLocation: xmlFs.schema,
-			XSSchemaLocation: xsFs.schema,
+			XSSchemaLocation:  xsFs.schema,
 		}
 	}
 	fs.cache = cache
@@ -888,6 +888,31 @@ func (fs *FileScope) GetComplexType(nameWithPrefix string) (string, *Symbol[*pro
 
 	symb, ok := symbs.GetComplexType(local)
 	return prefix, symb, ok
+}
+
+func (fs *FileScope) GetType(nameWithPrefix string) (string, *Symbol[any], bool) {
+	prefix, local, symbs, ok := fs.getSymbolMap(nameWithPrefix)
+	if !ok {
+		return prefix, nil, false
+	}
+
+	ct, ok := symbs.GetComplexType(local)
+	if ok {
+		return prefix, &Symbol[any]{
+			Symbol:   ct.Symbol,
+			FileName: ct.FileName,
+		}, true
+	}
+
+	st, ok := symbs.GetSimpleType(local)
+	if ok {
+		return prefix, &Symbol[any]{
+			Symbol:   st.Symbol,
+			FileName: st.FileName,
+		}, true
+	}
+
+	return prefix, nil, false
 }
 
 // GetElement 根据名字获取符号的前缀和结构。无论成功失败，前缀都将会正确返回

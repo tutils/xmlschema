@@ -182,3 +182,122 @@ func (gs *GlobalScope) GetAttributeGroup(namespace string, name string) (*Symbol
 	}
 	return symbs.GetAttributeGroup(name)
 }
+
+func (gs *GlobalScope) GetSimpleTypeInFile(nameWithPrefix string, fileName string) (*Symbol[*proto.SimpleType], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+	_, symbol, ok := fs.GetSimpleType(nameWithPrefix)
+	return symbol, ok
+}
+
+func (gs *GlobalScope) GetComplexTypeInFile(nameWithPrefix string, fileName string) (*Symbol[*proto.ComplexType], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+	_, symbol, ok := fs.GetComplexType(nameWithPrefix)
+	return symbol, ok
+}
+
+func (gs *GlobalScope) GetTypeInFile(nameWithPrefix string, fileName string) (*Symbol[any], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+	_, symbol, ok := fs.GetType(nameWithPrefix)
+	return symbol, ok
+}
+
+func (gs *GlobalScope) GetElementInFile(nameWithPrefix string, fileName string) (*Symbol[*proto.Element], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+	_, symbol, ok := fs.GetElement(nameWithPrefix)
+	return symbol, ok
+}
+
+func (gs *GlobalScope) GetGroupInFile(nameWithPrefix string, fileName string) (*Symbol[*proto.Group], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+	_, symbol, ok := fs.GetGroup(nameWithPrefix)
+	return symbol, ok
+}
+
+func (gs *GlobalScope) GetAttributeInFile(nameWithPrefix string, fileName string) (*Symbol[*proto.Attribute], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+	_, symbol, ok := fs.GetAttribute(nameWithPrefix)
+	return symbol, ok
+}
+
+func (gs *GlobalScope) GetAttributeGroupInFile(nameWithPrefix string, fileName string) (*Symbol[*proto.AttributeGroup], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+	_, symbol, ok := fs.GetAttributeGroup(nameWithPrefix)
+	return symbol, ok
+}
+
+func (gs *GlobalScope) GetElementByRef(elem *proto.Element, fileName string) (*Symbol[*proto.Element], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+
+	_, symbol, ok := fs.GetElement(elem.Ref)
+	if !ok {
+		return nil, false
+	}
+
+	return symbol, true
+}
+
+func (gs *GlobalScope) GetGroupByRef(grp *proto.Group, fileName string) (*Symbol[*proto.Group], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+
+	_, symbol, ok := fs.GetGroup(grp.Ref)
+	if !ok {
+		return nil, false
+	}
+
+	return symbol, true
+}
+
+func (gs *GlobalScope) GetAttributeByRef(attr *proto.Attribute, fileName string) (*Symbol[*proto.Attribute], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+
+	_, symbol, ok := fs.GetAttribute(attr.Ref)
+	if !ok {
+		return nil, false
+	}
+
+	return symbol, true
+}
+
+func (gs *GlobalScope) GetAttributeGroupByRef(attrGrp *proto.AttributeGroup, fileName string) (*Symbol[*proto.AttributeGroup], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return nil, false
+	}
+
+	_, symbol, ok := fs.GetAttributeGroup(attrGrp.Ref)
+	if !ok {
+		return nil, false
+	}
+
+	return symbol, true
+}

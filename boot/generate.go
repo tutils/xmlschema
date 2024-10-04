@@ -26,9 +26,10 @@ type ElementBlock struct {
 
 // 类型定义块
 type TypeDefineBlock struct {
-	Name  string
-	Attrs []*AttributeBlock
-	Elems []*ElementBlock
+	Name    string
+	Attrs   []*AttributeBlock
+	Elems   []*ElementBlock
+	IsMixed bool
 }
 
 // HasXMLNS 是否存在命名空间定义属性。
@@ -80,13 +81,33 @@ func (ca CheckCounter) MaxCount() int {
 	return max
 }
 
+type attrInfo struct {
+	isXMLNS bool
+}
+
+func newAttrInfo() *attrInfo {
+	return &attrInfo{}
+}
+
+type elemInfo struct {
+	counter CheckCounter
+}
+
+func newElemInfo() *elemInfo {
+	return &elemInfo{
+		counter: CheckCounter{},
+	}
+}
+
 // 某个元素的属性和子元素记录
 type record struct {
 	// 属性顺序映射[属性名, 是否是命名空间定义属性]
-	attrs *tplcontainer.SequenceMap[string, bool]
+	attrs *tplcontainer.SequenceMap[string, *attrInfo]
 
 	// 子元素顺序映射[子元素名, 具体父元素的子元素计数器]
-	elements *tplcontainer.SequenceMap[string, CheckCounter]
+	elements *tplcontainer.SequenceMap[string, *elemInfo]
+
+	isMixed bool
 }
 
 type Context struct {
@@ -128,23 +149,24 @@ func ScanAllSchemaFiles(ctx *Context, path string) {
 // walkElements 递归分析出全部类型（元素）的依赖关系
 func walkElements(ctx *Context, e, p *XMLElement) {
 	types := ctx.Types
-	if _, ok := types.Get(e.XMLName.Local); !ok {
+	rec, ok := types.Get(e.XMLName.Local)
+	if !ok {
 		// 没记录过这个类型
-		rec := &record{
-			attrs:    tplcontainer.NewSequenceMap[string, bool](),
-			elements: tplcontainer.NewSequenceMap[string, CheckCounter](),
+		rec = &record{
+			attrs:    tplcontainer.NewSequenceMap[string, *attrInfo](),
+			elements: tplcontainer.NewSequenceMap[string, *elemInfo](),
 		}
 		types.Set(e.XMLName.Local, rec)
 	}
 
 	if p != nil {
 		// 有父亲节点，计算这个子元素出现的次数。将来渲染成类型时，根据子元素最大出现次数判断该子元素是否为数组
-		if ca, ok := types.MustGet(p.XMLName.Local).elements.Get(e.XMLName.Local); !ok {
+		if elemInfo, ok := types.MustGet(p.XMLName.Local).elements.Get(e.XMLName.Local); !ok {
 			// 这类父元素下，没出现过该类子元素
-			types.MustGet(p.XMLName.Local).elements.Set(e.XMLName.Local, CheckCounter{})
+			types.MustGet(p.XMLName.Local).elements.Set(e.XMLName.Local, newElemInfo())
 		} else {
 			// 找到具体的父元素，将子元素出现次数+1。同类父元素分开计数，为了统计每个父元素一次性最多挂载多少个这种子元素
-			ca[p]++
+			elemInfo.counter[p]++
 		}
 	}
 
@@ -152,8 +174,14 @@ func walkElements(ctx *Context, e, p *XMLElement) {
 	for _, a := range e.XMLAttrs {
 		if _, ok := types.MustGet(e.XMLName.Local).attrs.Get(a.Name.Local); !ok {
 			// 没记录过这个属性，同时标记该属性是否属于命名空间定义属性
-			types.MustGet(e.XMLName.Local).attrs.Set(a.Name.Local, (a.Name.Space == "xmlns"))
+			attrInfo := newAttrInfo()
+			types.MustGet(e.XMLName.Local).attrs.Set(a.Name.Local, attrInfo)
+			attrInfo.isXMLNS = (a.Name.Space == "xmlns")
 		}
+	}
+
+	if len(e.XMLElements) == 0 && len(e.XMLContent) > 0 {
+		rec.isMixed = true
 	}
 
 	// 递归遍历全部子元素
@@ -240,18 +268,19 @@ func genBaseCodeFile(ctx *Context) *BaseCodeFile {
 
 			// 遍历类型定义序列
 			for _, oname := range order {
+				typ := types.MustGet(oname)
 				defBlock := &TypeDefineBlock{
-					Name: oname,
+					Name:    oname,
+					IsMixed: typ.isMixed,
 				}
 
-				typ := types.MustGet(oname)
 				if typ.attrs.Len() > 0 {
 					// 给类型添加属性定义
 					for _, attr := range typ.attrs.Order() {
-						isXMLNS := typ.attrs.MustGet(attr)
+						attrInfo := typ.attrs.MustGet(attr)
 						attrBlock := &AttributeBlock{
 							Name:    attr,
-							IsXMLNS: isXMLNS,
+							IsXMLNS: attrInfo.isXMLNS,
 						}
 						defBlock.Attrs = append(defBlock.Attrs, attrBlock)
 					}
@@ -260,10 +289,10 @@ func genBaseCodeFile(ctx *Context) *BaseCodeFile {
 				if typ.elements.Len() > 0 {
 					// 给类型添加元素定义
 					for _, elem := range typ.elements.Order() {
-						ca := typ.elements.MustGet(elem)
+						elemInfo := typ.elements.MustGet(elem)
 						elemBlock := &ElementBlock{
 							Name:    elem,
-							IsArray: ca.MaxCount() > 1,
+							IsArray: elemInfo.counter.MaxCount() > 1,
 						}
 						defBlock.Elems = append(defBlock.Elems, elemBlock)
 					}

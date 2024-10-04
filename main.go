@@ -112,5 +112,7 @@ func main() {
 	// tree.TestProto()
 	// tree.TestProtoETree()
 	// tree.TestSample()
-	render.LoadAllSchema()
+	// render.LoadAllSchema()
+	// render.TestSample()
+	render.GenAllSymbolText()
 }

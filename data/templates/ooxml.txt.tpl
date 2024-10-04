@@ -19,7 +19,7 @@
                 {{- end}}
             {{- end}}
             {{- if gt (len $def.Elems) 0}}
-        [Elements]
+        [Elements] {{- if $def.IsMixed}} (mixed) {{- end}}
                 {{- range $elem := $def.Elems}}
                     {{- if $elem.IsArray}}
             {{$elem.Name}} (array)
