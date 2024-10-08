@@ -128,30 +128,37 @@ func parseAnnotaion(anno *proto.Annotation) string {
 
 // (annotation?,((simpleType|complexType)?,(unique|key|keyref)*))
 func ParseSchemaElement(ctx *parseContext, elem *proto.Element, fileName string) {
+	var prefix string
 	if len(elem.Ref) > 0 {
-		symbol, ok := ctx.gs.GetElementByRef(elem, fileName)
+		p, symbol, ok := ctx.gs.GetElementByRef(elem, fileName)
 		if !ok {
 			panic("invalid element")
 		}
 		elem, fileName = symbol.Symbol, symbol.FileName
+		if len(p) > 0 {
+			prefix = p + ":"
+		}
 	}
 	lv := ctx.level
 
 	if len(elem.Type) > 0 {
-		symbolType, ok := ctx.gs.GetTypeInFile(elem.Type, fileName)
+		typePrefix, symbolType, ok := ctx.gs.GetTypeInFile(elem.Type, fileName)
 		if !ok {
 			panic("type not found")
+		}
+		if len(typePrefix) > 0 {
+			typePrefix += ":"
 		}
 
 		switch typ := symbolType.Symbol.(type) {
 		case *proto.ComplexType:
-			ctx.output("element: %s(%s) // %s", elem.Name, typ.Name, parseAnnotaion(elem.Annotation))
+			ctx.output("element: %s%s(%s%s) // %s", prefix, elem.Name, typePrefix, typ.Name, parseAnnotaion(elem.Annotation))
 
 			defer ctx.nextLevel()()
 			ParseSchemaComplexType(ctx, typ, symbolType.FileName)
 
 		case *proto.SimpleType:
-			ctx.output("element: %s(%s) // %s", elem.Name, typ.Name, parseAnnotaion(elem.Annotation))
+			ctx.output("element: %s%s(%s%s) // %s", prefix, elem.Name, typePrefix, typ.Name, parseAnnotaion(elem.Annotation))
 
 			defer ctx.nextLevel()()
 			ParseSchemaSimpleType(ctx, typ, symbolType.FileName)
@@ -318,21 +325,25 @@ func ParseSchemaSimpleType(ctx *parseContext, st *proto.SimpleType, fileName str
 
 // (annotation?,(simpleType?))
 func ParseSchemaAttribute(ctx *parseContext, attr *proto.Attribute, fileName string) {
+	var prefix string
 	if len(attr.Ref) > 0 {
-		symbol, ok := ctx.gs.GetAttributeByRef(attr, fileName)
+		p, symbol, ok := ctx.gs.GetAttributeByRef(attr, fileName)
 		if !ok {
 			panic("invalid attribute")
 		}
 		attr, fileName = symbol.Symbol, symbol.FileName
+		if len(p) > 0 {
+			prefix = p + ":"
+		}
 	}
 
 	if len(attr.Type) > 0 {
-		symbolType, ok := ctx.gs.GetSimpleTypeInFile(attr.Type, fileName)
+		typePrefix, symbolType, ok := ctx.gs.GetSimpleTypeInFile(attr.Type, fileName)
 		if !ok {
 			panic("simpleType not found")
 		}
 
-		ctx.output("attribute: %s(%s) // %s", attr.Name, symbolType.Symbol.Name, parseAnnotaion(attr.Annotation))
+		ctx.output("attribute: %s%s(%s%s) // %s", prefix, attr.Name, typePrefix, symbolType.Symbol.Name, parseAnnotaion(attr.Annotation))
 		defer ctx.nextLevel()()
 		ParseSchemaSimpleType(ctx, symbolType.Symbol, symbolType.FileName)
 		return
@@ -347,14 +358,18 @@ func ParseSchemaAttribute(ctx *parseContext, attr *proto.Attribute, fileName str
 
 // (annotation?),((attribute|attributeGroup)*,anyAttribute?))
 func ParseSchemaAttributeGroup(ctx *parseContext, attrGrp *proto.AttributeGroup, fileName string) {
+	var prefix string
 	if len(attrGrp.Ref) > 0 {
-		symbol, ok := ctx.gs.GetAttributeGroupByRef(attrGrp, fileName)
+		p, symbol, ok := ctx.gs.GetAttributeGroupByRef(attrGrp, fileName)
 		if !ok {
 			panic("invalid attributeGroup")
 		}
 		attrGrp, fileName = symbol.Symbol, symbol.FileName
+		if len(p) > 0 {
+			prefix = p + ":"
+		}
 	}
-	ctx.output("attributeGroup: %s // %s", attrGrp.Name, parseAnnotaion(attrGrp.Annotation))
+	ctx.output("attributeGroup: %s%s // %s", prefix, attrGrp.Name, parseAnnotaion(attrGrp.Annotation))
 
 	defer ctx.nextLevel()()
 	for _, attr := range attrGrp.AttributeList {
@@ -411,14 +426,18 @@ func ParseSchemaSequence(ctx *parseContext, seq *proto.Sequence, fileName string
 
 // (annotation?,(all|choice|sequence)?)
 func ParseSchemaGroup(ctx *parseContext, grp *proto.Group, fileName string) {
+	var prefix string
 	if len(grp.Ref) > 0 {
-		symbol, ok := ctx.gs.GetGroupByRef(grp, fileName)
+		p, symbol, ok := ctx.gs.GetGroupByRef(grp, fileName)
 		if !ok {
 			panic("invalid attributeGroup")
 		}
 		grp, fileName = symbol.Symbol, symbol.FileName
+		if len(p) > 0 {
+			prefix = p + ":"
+		}
 	}
-	ctx.output("group: %s // %s", grp.Name, parseAnnotaion(grp.Annotation))
+	ctx.output("group: %s%s // %s", prefix, grp.Name, parseAnnotaion(grp.Annotation))
 	lv := ctx.level
 
 	if grp.Choice != nil {
@@ -518,21 +537,23 @@ func ParseSchemaAny(ctx *parseContext, an *proto.Any, fileName string) {
 
 // (annotation?,((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?)))
 func ParseSchemaExtension(ctx *parseContext, ext *proto.Extension, fileName string) {
-	ctx.output("extension: (%s)", ext.Base)
+	if len(ext.Base) == 0 {
+		panic("invalid extension")
+	}
+	ctx.output("extension: %s", ext.Base)
 	lv := ctx.level
 
-	if len(ext.Base) > 0 {
-		symbolType, ok := ctx.gs.GetTypeInFile(ext.Base, fileName)
-		if !ok {
-			panic("type not found")
-		}
-		switch typ := symbolType.Symbol.(type) {
-		case *proto.ComplexType:
-			ParseSchemaComplexType(ctx, typ, symbolType.FileName)
+	_, symbolType, ok := ctx.gs.GetTypeInFile(ext.Base, fileName)
+	if !ok {
+		panic("type not found")
+	}
+	switch typ := symbolType.Symbol.(type) {
+	case *proto.ComplexType:
+		ParseSchemaComplexType(ctx, typ, symbolType.FileName)
 
-		case *proto.SimpleType:
-			ParseSchemaSimpleType(ctx, typ, symbolType.FileName)
-		}
+	case *proto.SimpleType:
+
+		ParseSchemaSimpleType(ctx, typ, symbolType.FileName)
 	}
 
 	if ext.Sequence != nil {
@@ -573,13 +594,16 @@ func ParseSchemaExtension(ctx *parseContext, ext *proto.Extension, fileName stri
 // simpleContent: (annotation?,(simpleType?,(minExclusive |minInclusive|maxExclusive|maxInclusive|totalDigits|fractionDigits|length|minLength|maxLength|enumeration|whiteSpace|pattern)*)?,((attribute|attributeGroup)*,anyAttribute?))
 // complexContent: (annotation?,(group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?))
 func ParseSchemaRestriction(ctx *parseContext, rest *proto.Restriction, fileName string) {
-	ctx.output("restriction: (%s) // %s", rest.Base, parseAnnotaion(rest.Annotation))
 	lv := ctx.level
-
-	if rest.SimpleType != nil {
+	if len(rest.Base) > 0 {
+		ctx.output("restriction: %s // %s", rest.Base, parseAnnotaion(rest.Annotation))
+	} else if rest.SimpleType != nil {
+		ctx.output("restriction: <simpleType> // %s", rest.Base, parseAnnotaion(rest.Annotation))
 		ctx.level = lv
 		defer ctx.nextLevel()()
 		ParseSchemaSimpleType(ctx, rest.SimpleType, fileName)
+	} else {
+		panic("invalid restriction")
 	}
 
 	if len(rest.EnumerationList) > 0 {
@@ -628,7 +652,7 @@ func ParseSchemaUnion(ctx *parseContext, uni *proto.Union, fileName string) {
 
 		defer ctx.nextLevel()()
 		for _, typ := range sli {
-			symbolType, ok := ctx.gs.GetTypeInFile(typ, fileName)
+			_, symbolType, ok := ctx.gs.GetTypeInFile(typ, fileName)
 			if !ok {
 				panic("type not found")
 			}
@@ -657,7 +681,7 @@ func ParseSchemaList(ctx *parseContext, lst *proto.List, fileName string) {
 	lv := ctx.level
 
 	if len(lst.ItemType) > 0 {
-		symbolType, ok := ctx.gs.GetTypeInFile(lst.ItemType, fileName)
+		_, symbolType, ok := ctx.gs.GetTypeInFile(lst.ItemType, fileName)
 		if !ok {
 			panic("type not found")
 		}
@@ -820,6 +844,10 @@ func GenAllSymbolText() {
 	genCtx.verbose = true
 
 	stdout := os.Stdout
+	defer func() {
+		os.Stdout = stdout
+	}()
+
 	for _, ns := range gs.namespaceMap.Order() {
 		u, err := url.Parse(ns)
 		if err != nil {
@@ -932,5 +960,4 @@ func GenAllSymbolText() {
 			}
 		}()
 	}
-	os.Stdout = stdout
 }
