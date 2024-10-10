@@ -1,140 +1,130 @@
 package render
 
 import (
-	"os"
+	"archive/zip"
+	"fmt"
+	"io"
+	"unicode/utf16"
 
 	"github.com/beevik/etree"
+	"github.com/tutils/xmlschema/proto"
 )
 
-type XMLElement interface {
-	XMLElement() *etree.Element
-	AddChild(XMLElement)
-}
+// 遍历某个文件夹下的全部schema文件
+func LoadAllSchema() {
+	gs := NewGlobalScope()
+	// fs := gs.LoadSchema("data/schemas/ooxml/pml-slide.xsd")
+	// prefix, symb, ok := fs.GetElement("p:sld")
+	// fmt.Println(prefix, symb, ok)
+	// fs = gs.LoadSchema("data/schemas/ooxml/pml-presentation.xsd")
+	// prefix, symb, ok = fs.GetElement("p:presentation")
+	// fmt.Println(prefix, symb, ok)
+	// gs.LoadSchema(XSSchemaLocation)
+	// gs.LoadSchema(XMLSchemaLocation)
 
-type TypeChecker func(e XMLElement) bool
+	gs.LoadSchemaFilesFromDirectory("data/schemas/OfficeOpenXML-XMLSchema-Transitional")
+	// for _, name := range gs.fileMap.Order() {
+	// 	fs := gs.fileMap.MustGet(name)
+	// 	if len(fs.schema.AttributeList) != 0 {
+	// 		fmt.Println(fs.name)
+	// 	}
+	// }
 
-type ElementChoice struct {
-	etreeElem *etree.Element
-	checker   TypeChecker
-	seq       []any
-}
+	// symbol, ok := gs.GetElement(XSNamespace, "element")
+	// if !ok {
+	// 	panic("symbol not found")
+	// }
 
-func NewElementChoice(checker TypeChecker, e XMLElement) *ElementChoice {
-	return &ElementChoice{
-		etreeElem: e.XMLElement(),
-		checker:   checker,
+	// r := newParseContext(gs)
+	// ParseSchemaElement(symbol.Symbol, symbol.FileName)
+
+	zr, err := zip.OpenReader("列表样式还原- Case 文件 .pptx")
+	if err != nil {
+		panic(err)
 	}
-}
-
-func (e *ElementChoice) XMLElement() *etree.Element {
-	return e.etreeElem
-}
-
-func (e *ElementChoice) AddChild(c XMLElement) {
-	e.XMLElement().AddChild(c.XMLElement())
-}
-
-func (ec *ElementChoice) AddElement(e XMLElement) {
-	if !ec.checker(e) {
-		return
+	defer zr.Close()
+	for _, file := range zr.Reader.File {
+		fp, err := file.Open()
+		if err != nil {
+			panic(err)
+		}
+		defer fp.Close()
+		// fmt.Println(file.Name)
+		if file.Name == "ppt/slides/slide2.xml" {
+			TestParse(fp, gs)
+		}
 	}
 
-	ec.seq = append(ec.seq, e)
-	ec.AddChild(e)
+	fmt.Println("exit.")
 }
 
-type GroupShapeNonVisual struct {
-	etreeElem *etree.Element
-}
-
-func NewCT_GroupShapeNonVisual() *GroupShapeNonVisual {
-	e := &GroupShapeNonVisual{}
-	e.etreeElem = etree.NewElement("")
-	return e
-}
-
-func (e *GroupShapeNonVisual) XMLElement() *etree.Element {
-	return e.etreeElem
-}
-
-func (e *GroupShapeNonVisual) AddChild(c XMLElement) {
-	e.XMLElement().AddChild(c.XMLElement())
-}
-
-type Shape struct {
-	etreeElem *etree.Element
-}
-
-func NewShape() *Shape {
-	e := &Shape{}
-	e.etreeElem = etree.NewElement("")
-	return e
-}
-
-func (e *Shape) XMLElement() *etree.Element {
-	return e.etreeElem
-}
-
-func (e *Shape) AddChild(c XMLElement) {
-	e.XMLElement().AddChild(c.XMLElement())
-}
-
-type GroupShape struct {
-	etreeElem *etree.Element
-	nvGrpSpPr *GroupShapeNonVisual // 1
-	choice0   *ElementChoice       // 1
-}
-
-func checkCT_GroupShapeChoice0(e XMLElement) bool {
-	switch e.(type) {
-	case *Shape:
-		return true
+func escapedStr(s string) string {
+	var escapedStr string
+	for _, r := range s {
+		// 检查是否是高代理项的 Unicode 字符
+		if r >= 0xD800 && r <= 0xDFFF {
+			// 处理 UTF-16 代理对
+			r1, r2 := utf16.EncodeRune(r)
+			escapedStr += fmt.Sprintf("\\u%04x\\u%04x", r1, r2)
+		} else {
+			escapedStr += fmt.Sprintf("\\u%04x", r)
+		}
 	}
-	return false
+	return escapedStr
 }
 
-func NewGroupShape() *GroupShape {
-	e := &GroupShape{}
+func TestParse(r io.ReadCloser, gs *GlobalScope) {
+	doc := etree.NewDocument()
+	_, err := doc.ReadFrom(r)
+	if err != nil {
+		panic(err)
+	}
 
-	e.etreeElem = etree.NewElement("")
+	root := doc.Root()
+	root.ChildElements()
 
-	e.choice0 = NewElementChoice(checkCT_GroupShapeChoice0, e)
+	prefixMap := make(map[string]string)
+	for _, attr := range root.Attr {
+		if attr.Space == "xmlns" {
+			prefixMap[attr.Key] = attr.Value
+		}
+	}
 
-	nvGrpSpPr := NewCT_GroupShapeNonVisual()
-	e.SetGroupShapeNonVisual(nvGrpSpPr)
+	orderCtx := NewRenderer(gs)
+	orderCtx.parseRecursive = true
+	orderCtx.verbose = false
+	ParseDocElement(orderCtx, root)
+	sli := root.FindElements("//p:sld/p:cSld/p:spTree/p:sp/p:txBody/a:p/a:pPr[a:buChar]")
+	fmt.Println(sli)
+	for _, e := range sli {
+		buFont := e.SelectElement("a:buFont")
+		buChar := e.SelectElement("a:buChar")
+		fmt.Println("typeface:", buFont.SelectAttr("typeface").Value)
+		ch := buChar.SelectAttr("char").Value
+		fmt.Println("char:", escapedStr(ch))
+	}
 
-	return e
-}
+	genCtx := NewRenderer(gs)
+	genCtx.parseRecursive = false
+	genCtx.verbose = true
+	for _, symb := range orderCtx.order.Order() {
+		info := orderCtx.order.MustGet(symb)
+		switch typ := symb.(type) {
+		case *proto.ComplexType:
+			genCtx.ParseSchemaComplexType(typ, info.FileName)
+		case *proto.SimpleType:
+			genCtx.ParseSchemaSimpleType(typ, info.FileName)
+		}
+	}
 
-func (e *GroupShape) XMLElement() *etree.Element {
-	return e.etreeElem
-}
+	// fmt.Println(doc, root)
+	// var root boot.XMLElement
+	// dec := xml.NewDecoder(fp)
+	// err := dec.Decode(&root)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// fmt.Println(root)
 
-func (e *GroupShape) AddChild(c XMLElement) {
-	e.XMLElement().AddChild(c.XMLElement())
-}
-
-func (e *GroupShape) SetGroupShapeNonVisual(c *GroupShapeNonVisual) {
-	c.XMLElement().Tag = "nvGrpSpPr"
-	e.nvGrpSpPr = c
-	e.AddChild(c)
-}
-
-func (e *GroupShape) AddShape(c *Shape) {
-	c.XMLElement().Tag = "sp"
-	e.choice0.AddElement(c)
-}
-
-func TestSample() {
-	e := NewGroupShape()
-	e.XMLElement().Tag = "spTree"
-
-	sp1 := NewShape()
-	e.AddShape(sp1)
-	sp2 := NewShape()
-	e.AddShape(sp2)
-
-	doc := etree.NewDocumentWithRoot(e.XMLElement())
-	doc.Indent(4)
-	doc.WriteTo(os.Stdout)
+	fmt.Println("end.")
 }

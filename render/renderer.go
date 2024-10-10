@@ -1,14 +1,11 @@
 package render
 
 import (
-	"archive/zip"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
-	"unicode/utf16"
 
 	"github.com/beevik/etree"
 	"github.com/tutils/xmlschema/boot"
@@ -106,7 +103,7 @@ func ParseDocElement(r *Renderer, elem *etree.Element) {
 	r.ParseSchemaElement(symbol.Symbol, symbol.FileName)
 }
 
-func (r *Renderer) parseAnnotaion(anno *proto.Annotation) string {
+func parseAnnotaion(anno *proto.Annotation) string {
 	if anno == nil {
 		return ""
 	}
@@ -131,20 +128,23 @@ func (r *Renderer) parseAnnotaion(anno *proto.Annotation) string {
 // (annotation?,((simpleType|complexType)?,(unique|key|keyref)*))
 func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 	var prefix string
+	var refElem *proto.Element
 	if len(elem.Ref) > 0 {
 		p, symbol, ok := r.gs.GetElementByRef(elem, fileName)
 		if !ok {
 			panic("invalid element")
 		}
-		elem, fileName = symbol.Symbol, symbol.FileName
+		refElem, fileName = symbol.Symbol, symbol.FileName
 		if len(p) > 0 {
 			prefix = p + ":"
 		}
+	} else {
+		refElem = elem
 	}
 	lv := r.level
 
-	if len(elem.Type) > 0 {
-		typePrefix, symbolType, ok := r.gs.GetTypeInFile(elem.Type, fileName)
+	if len(refElem.Type) > 0 {
+		typePrefix, symbolType, ok := r.gs.GetTypeInFile(refElem.Type, fileName)
 		if !ok {
 			panic("type not found")
 		}
@@ -154,28 +154,28 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 
 		switch typ := symbolType.Symbol.(type) {
 		case *proto.ComplexType:
-			r.output("element: %s%s(%s%s) // %s", prefix, elem.Name, typePrefix, typ.Name, r.parseAnnotaion(elem.Annotation))
+			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, refElem.Name, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
 
 			defer r.nextLevel()()
 			r.ParseSchemaComplexType(typ, symbolType.FileName)
 
 		case *proto.SimpleType:
-			r.output("element: %s%s(%s%s) // %s", prefix, elem.Name, typePrefix, typ.Name, r.parseAnnotaion(elem.Annotation))
+			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, refElem.Name, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
 
 			defer r.nextLevel()()
 			r.ParseSchemaSimpleType(typ, symbolType.FileName)
 		}
-	} else if elem.ComplexType != nil {
-		r.output("element: %s(<complexType>) // %s", elem.Name, r.parseAnnotaion(elem.Annotation))
+	} else if refElem.ComplexType != nil {
+		r.output("element: %s(<complexType>) (%s, %s) // %s", refElem.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
 		r.level = lv
 		defer r.nextLevel()()
-		r.ParseSchemaComplexType(elem.ComplexType, fileName)
+		r.ParseSchemaComplexType(refElem.ComplexType, fileName)
 	}
 
-	if elem.Unique != nil {
+	if refElem.Unique != nil {
 		r.level = lv
 		defer r.nextLevel()()
-		r.ParseSchemaUnique(elem.Unique, fileName)
+		r.ParseSchemaUnique(refElem.Unique, fileName)
 	}
 }
 
@@ -213,7 +213,7 @@ func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string
 		r.defineState[ct] = defined
 	}()
 
-	r.output("complexType: %s // %s", ct.Name, r.parseAnnotaion(ct.Annotation))
+	r.output("complexType: %s // %s", ct.Name, parseAnnotaion(ct.Annotation))
 	lv := r.level
 
 	if ct.SimpleContent != nil {
@@ -303,7 +303,7 @@ func (r *Renderer) ParseSchemaSimpleType(st *proto.SimpleType, fileName string) 
 		r.defineState[st] = defined
 	}()
 
-	r.output("simpleType: %s // %s", st.Name, r.parseAnnotaion(st.Annotation))
+	r.output("simpleType: %s // %s", st.Name, parseAnnotaion(st.Annotation))
 	lv := r.level
 
 	if st.Restriction != nil {
@@ -345,14 +345,14 @@ func (r *Renderer) ParseSchemaAttribute(attr *proto.Attribute, fileName string) 
 			panic("simpleType not found")
 		}
 
-		r.output("attribute: %s%s(%s%s) // %s", prefix, attr.Name, typePrefix, symbolType.Symbol.Name, r.parseAnnotaion(attr.Annotation))
+		r.output("attribute: %s%s(%s%s) // %s", prefix, attr.Name, typePrefix, symbolType.Symbol.Name, parseAnnotaion(attr.Annotation))
 		defer r.nextLevel()()
 		r.ParseSchemaSimpleType(symbolType.Symbol, symbolType.FileName)
 		return
 	}
 
 	if attr.SimpleType != nil {
-		r.output("attribute: %s(<simpleType>) // %s", attr.Name, r.parseAnnotaion(attr.Annotation))
+		r.output("attribute: %s(<simpleType>) // %s", attr.Name, parseAnnotaion(attr.Annotation))
 		defer r.nextLevel()()
 		r.ParseSchemaSimpleType(attr.SimpleType, fileName)
 	}
@@ -371,7 +371,7 @@ func (r *Renderer) ParseSchemaAttributeGroup(attrGrp *proto.AttributeGroup, file
 			prefix = p + ":"
 		}
 	}
-	r.output("attributeGroup: %s%s // %s", prefix, attrGrp.Name, r.parseAnnotaion(attrGrp.Annotation))
+	r.output("attributeGroup: %s%s // %s", prefix, attrGrp.Name, parseAnnotaion(attrGrp.Annotation))
 
 	defer r.nextLevel()()
 	for _, attr := range attrGrp.AttributeList {
@@ -384,7 +384,7 @@ func (r *Renderer) ParseSchemaAttributeGroup(attrGrp *proto.AttributeGroup, file
 
 // (annotation?,(element|group|choice|sequence|any)*)
 func (r *Renderer) ParseSchemaSequence(seq *proto.Sequence, fileName string) {
-	r.output("sequence // %s", r.parseAnnotaion(seq.Annotation))
+	r.output("sequence (%s, %s) // %s", seq.MinOccurs, seq.MaxOccurs, parseAnnotaion(seq.Annotation))
 	lv := r.level
 
 	if len(seq.ElementList) > 0 {
@@ -429,34 +429,37 @@ func (r *Renderer) ParseSchemaSequence(seq *proto.Sequence, fileName string) {
 // (annotation?,(all|choice|sequence)?)
 func (r *Renderer) ParseSchemaGroup(grp *proto.Group, fileName string) {
 	var prefix string
+	var refGrp *proto.Group
 	if len(grp.Ref) > 0 {
 		p, symbol, ok := r.gs.GetGroupByRef(grp, fileName)
 		if !ok {
 			panic("invalid attributeGroup")
 		}
-		grp, fileName = symbol.Symbol, symbol.FileName
+		refGrp, fileName = symbol.Symbol, symbol.FileName
 		if len(p) > 0 {
 			prefix = p + ":"
 		}
+	} else {
+		refGrp = grp
 	}
-	r.output("group: %s%s // %s", prefix, grp.Name, r.parseAnnotaion(grp.Annotation))
+	r.output("group: %s%s (%s, %s) // %s", prefix, refGrp.Name, grp.MinOccurs, grp.MaxOccurs, parseAnnotaion(refGrp.Annotation))
 	lv := r.level
 
-	if grp.Choice != nil {
+	if refGrp.Choice != nil {
 		defer r.nextLevel()()
-		r.ParseSchemaChoice(grp.Choice, fileName)
+		r.ParseSchemaChoice(refGrp.Choice, fileName)
 	}
 
-	if grp.Sequence != nil {
+	if refGrp.Sequence != nil {
 		r.level = lv
 		defer r.nextLevel()()
-		r.ParseSchemaSequence(grp.Sequence, fileName)
+		r.ParseSchemaSequence(refGrp.Sequence, fileName)
 	}
 }
 
 // (annotation?,(element|group|choice|sequence|any)*)
 func (r *Renderer) ParseSchemaChoice(ch *proto.Choice, fileName string) {
-	r.output("choice // %s", r.parseAnnotaion(ch.Annotation))
+	r.output("choice (%s, %s) // %s", ch.MinOccurs, ch.MaxOccurs, parseAnnotaion(ch.Annotation))
 	lv := r.level
 
 	if len(ch.ElementList) > 0 {
@@ -495,7 +498,7 @@ func (r *Renderer) ParseSchemaChoice(ch *proto.Choice, fileName string) {
 
 // (annotation?,element*)
 func (r *Renderer) ParseSchemaAll(all *proto.All, fileName string) {
-	r.output("all")
+	r.output("all (%s,)", all.MinOccurs)
 
 	if len(all.ElementList) > 0 {
 		defer r.nextLevel()()
@@ -534,7 +537,7 @@ func (r *Renderer) ParseSchemaComplexContent(cc *proto.ComplexContent, fileName 
 
 // (annotation?)
 func (r *Renderer) ParseSchemaAny(an *proto.Any, fileName string) {
-	r.output("any")
+	r.output("any (%s, %s)", an.MinOccurs, an.MaxOccurs)
 }
 
 // (annotation?,((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?)))
@@ -598,9 +601,9 @@ func (r *Renderer) ParseSchemaExtension(ext *proto.Extension, fileName string) {
 func (r *Renderer) ParseSchemaRestriction(rest *proto.Restriction, fileName string) {
 	lv := r.level
 	if len(rest.Base) > 0 {
-		r.output("restriction: %s // %s", rest.Base, r.parseAnnotaion(rest.Annotation))
+		r.output("restriction: %s // %s", rest.Base, parseAnnotaion(rest.Annotation))
 	} else if rest.SimpleType != nil {
-		r.output("restriction: <simpleType> // %s", rest.Base, r.parseAnnotaion(rest.Annotation))
+		r.output("restriction: <simpleType> // %s", rest.Base, parseAnnotaion(rest.Annotation))
 		r.level = lv
 		defer r.nextLevel()()
 		r.ParseSchemaSimpleType(rest.SimpleType, fileName)
@@ -638,7 +641,7 @@ func (r *Renderer) ParseSchemaRestriction(rest *proto.Restriction, fileName stri
 }
 
 func (r *Renderer) ParseSchemaEnumeration(enum *proto.Enumeration, fileName string) {
-	r.output("enumeration: %s // %s", enum.Value, r.parseAnnotaion(enum.Annotation))
+	r.output("enumeration: %s // %s", enum.Value, parseAnnotaion(enum.Annotation))
 }
 
 // (annotation?,(simpleType*))
@@ -716,134 +719,9 @@ func (r *Renderer) ParseSchemaUnique(uniq *proto.Unique, fileName string) {
 	}
 }
 
-// 遍历某个文件夹下的全部schema文件
-func LoadAllSchema() {
-	gs := NewGlobalScope()
-	// fs := gs.LoadSchema("data/schemas/ooxml/pml-slide.xsd")
-	// prefix, symb, ok := fs.GetElement("p:sld")
-	// fmt.Println(prefix, symb, ok)
-	// fs = gs.LoadSchema("data/schemas/ooxml/pml-presentation.xsd")
-	// prefix, symb, ok = fs.GetElement("p:presentation")
-	// fmt.Println(prefix, symb, ok)
-	// gs.LoadSchema(XSSchemaLocation)
-	// gs.LoadSchema(XMLSchemaLocation)
-
-	gs.LoadSchemaFilesFromDirectory("data/schemas/ooxml")
-	for _, name := range gs.fileMap.Order() {
-		fs := gs.fileMap.MustGet(name)
-		if len(fs.schema.AttributeList) != 0 {
-			fmt.Println(fs.name)
-		}
-	}
-
-	// symbol, ok := gs.GetElement(XSNamespace, "element")
-	// if !ok {
-	// 	panic("symbol not found")
-	// }
-
-	// r := newParseContext(gs)
-	// ParseSchemaElement(symbol.Symbol, symbol.FileName)
-
-	zr, err := zip.OpenReader("列表样式还原- Case 文件 .pptx")
-	if err != nil {
-		panic(err)
-	}
-	defer zr.Close()
-	for _, file := range zr.Reader.File {
-		fp, err := file.Open()
-		if err != nil {
-			panic(err)
-		}
-		defer fp.Close()
-		// fmt.Println(file.Name)
-		if file.Name == "ppt/slides/slide2.xml" {
-			TestParse(fp, gs)
-		}
-	}
-
-	fmt.Println("exit.")
-}
-
-func escapedStr(s string) string {
-	var escapedStr string
-	for _, r := range s {
-		// 检查是否是高代理项的 Unicode 字符
-		if r >= 0xD800 && r <= 0xDFFF {
-			// 处理 UTF-16 代理对
-			r1, r2 := utf16.EncodeRune(r)
-			escapedStr += fmt.Sprintf("\\u%04x\\u%04x", r1, r2)
-		} else {
-			escapedStr += fmt.Sprintf("\\u%04x", r)
-		}
-	}
-	return escapedStr
-}
-
-func TestParse(r io.ReadCloser, gs *GlobalScope) {
-	doc := etree.NewDocument()
-	_, err := doc.ReadFrom(r)
-	if err != nil {
-		panic(err)
-	}
-
-	root := doc.Root()
-	root.ChildElements()
-
-	prefixMap := make(map[string]string)
-	for _, attr := range root.Attr {
-		if attr.Space == "xmlns" {
-			prefixMap[attr.Key] = attr.Value
-		}
-	}
-
-	orderCtx := NewRenderer(gs)
-	orderCtx.parseRecursive = true
-	orderCtx.verbose = false
-	ParseDocElement(orderCtx, root)
-	sli := root.FindElements("//p:sld/p:cSld/p:spTree/p:sp/p:txBody/a:p/a:pPr[a:buChar]")
-	fmt.Println(sli)
-	for _, e := range sli {
-		buFont := e.SelectElement("a:buFont")
-		buChar := e.SelectElement("a:buChar")
-		fmt.Println("typeface:", buFont.SelectAttr("typeface").Value)
-		ch := buChar.SelectAttr("char").Value
-		fmt.Println("char:", escapedStr(ch))
-	}
-
-	genCtx := NewRenderer(gs)
-	genCtx.parseRecursive = false
-	genCtx.verbose = true
-	for _, symb := range orderCtx.order.Order() {
-		info := orderCtx.order.MustGet(symb)
-		switch typ := symb.(type) {
-		case *proto.ComplexType:
-			genCtx.ParseSchemaComplexType(typ, info.FileName)
-		case *proto.SimpleType:
-			genCtx.ParseSchemaSimpleType(typ, info.FileName)
-		}
-	}
-
-	// fmt.Println(doc, root)
-	// var root boot.XMLElement
-	// dec := xml.NewDecoder(fp)
-	// err := dec.Decode(&root)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Println(root)
-
-	fmt.Println("debug")
-}
-
 func GenAllSymbolText() {
 	gs := NewGlobalScope()
 	gs.LoadSchemaFilesFromDirectory("data/schemas/OfficeOpenXML-XMLSchema-Transitional")
-	for _, name := range gs.fileMap.Order() {
-		fs := gs.fileMap.MustGet(name)
-		if len(fs.schema.AttributeList) != 0 {
-			fmt.Println(fs.name)
-		}
-	}
 
 	// // 生成定义顺序
 	// orderCtx := newParseContext(gs)
