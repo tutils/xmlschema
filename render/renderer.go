@@ -837,7 +837,7 @@ func TestParse(r io.ReadCloser, gs *GlobalScope) {
 
 func GenAllSymbolText() {
 	gs := NewGlobalScope()
-	gs.LoadSchemaFilesFromDirectory("data/schemas/ooxml")
+	gs.LoadSchemaFilesFromDirectory("data/schemas/OfficeOpenXML-XMLSchema-Transitional")
 	for _, name := range gs.fileMap.Order() {
 		fs := gs.fileMap.MustGet(name)
 		if len(fs.schema.AttributeList) != 0 {
@@ -880,7 +880,14 @@ func GenAllSymbolText() {
 			panic(err)
 		}
 
-		baseDir := filepath.Join("output", strings.ReplaceAll(strings.ReplaceAll(u.Path, "/", "_"), ".", "_"))
+		var pth string
+		if len(u.Path) > 0 {
+			pth = u.Path
+		} else {
+			pth = strings.ReplaceAll(ns, ":", "_")
+		}
+
+		baseDir := filepath.Join("output", strings.ReplaceAll(strings.ReplaceAll(pth, "/", "_"), ".", "_"))
 		symbs := gs.namespaceMap.MustGet(ns)
 		os.MkdirAll(baseDir, os.FileMode(0755))
 

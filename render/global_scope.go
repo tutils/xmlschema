@@ -60,23 +60,35 @@ func NewGlobalScope() *GlobalScope {
 		xsFs,
 	} {
 		gs.cache[fs.name] = fs.schema
-
-		// 添加文件映射
-		gs.fileMap.Set(fs.name, fs)
-
-		// 将文件域的符号表合并至全局符号表中
-		for _, ns := range fs.namespaceMap.Order() {
-			fileSymbs := fs.namespaceMap.MustGet(ns)
-			globalSymbs, ok := gs.namespaceMap.Get(ns)
-			if !ok {
-				globalSymbs = NewSymbolMap()
-				gs.namespaceMap.Set(ns, globalSymbs)
-			}
-			globalSymbs.Merge(fileSymbs, false)
-		}
+		gs.addFileScope(fs)
 	}
 
 	return gs
+}
+
+func (gs *GlobalScope) addFileScope(fs *FileScope) {
+	// 添加文件映射
+	gs.fileMap.Set(fs.name, fs)
+
+	// 合并符号表
+	gs.mergeNamespaceMap(fs)
+}
+
+// mergeNamespaceMap 将文件域的符号表合并至全局符号表中
+func (gs *GlobalScope) mergeNamespaceMap(fs *FileScope) {
+	for _, ns := range fs.namespaceMap.Order() {
+		if len(ns) == 0 {
+			continue
+		}
+
+		fileSymbs := fs.namespaceMap.MustGet(ns)
+		globalSymbs, ok := gs.namespaceMap.Get(ns)
+		if !ok {
+			globalSymbs = NewSymbolMap()
+			gs.namespaceMap.Set(ns, globalSymbs)
+		}
+		globalSymbs.Merge(fileSymbs, false)
+	}
 }
 
 func (gs *GlobalScope) LoadSchema(name string) *FileScope {
@@ -98,19 +110,7 @@ func (gs *GlobalScope) LoadSchema(name string) *FileScope {
 	fs := newFileScope()
 	fs.loadSchema(name, gs.cache)
 
-	// 添加文件映射
-	gs.fileMap.Set(name, fs)
-
-	// 将文件域的符号表合并至全局符号表中
-	for _, ns := range fs.namespaceMap.Order() {
-		fileSymbs := fs.namespaceMap.MustGet(ns)
-		globalSymbs, ok := gs.namespaceMap.Get(ns)
-		if !ok {
-			globalSymbs = NewSymbolMap()
-			gs.namespaceMap.Set(ns, globalSymbs)
-		}
-		globalSymbs.Merge(fileSymbs, false)
-	}
+	gs.addFileScope(fs)
 
 	return fs
 }

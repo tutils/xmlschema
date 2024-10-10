@@ -137,11 +137,11 @@ func (sm *SymbolMap) AddSymbolsFromMap(symbs *SymbolMap) {
 	addFromMap(sm.attributeGroupMap, symbs.attributeGroupMap)
 }
 
-func mergeFromMap[SYMBOL any](src, dst *tplcontainer.SequenceMap[string, *Symbol[SYMBOL]], overwrite bool) {
-	for _, name := range dst.Order() {
-		v := dst.MustGet(name)
-		if _, ok := src.Get(name); !ok || overwrite {
-			src.Set(name, v)
+func mergeFromMap[SYMBOL any](dst, src *tplcontainer.SequenceMap[string, *Symbol[SYMBOL]], overwrite bool) {
+	for _, name := range src.Order() {
+		v := src.MustGet(name)
+		if _, ok := dst.Get(name); !ok || overwrite {
+			dst.Set(name, v)
 		}
 	}
 }
