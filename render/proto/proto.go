@@ -367,9 +367,12 @@ type T_CT_Name struct {
 	a_en *string
 }
 
-func NewT_CT_Name() *T_CT_Name {
+func NewT_CT_Name(base *XMLElementBase) *T_CT_Name {
+	if base == nil {
+		base = NewXMLElementBase()
+	}
 	return &T_CT_Name{
-		base: NewXMLElementBase(),
+		base: base,
 	}
 }
 
@@ -432,9 +435,12 @@ type T_CT_Doc struct {
 	text string
 }
 
-func NewT_CT_Doc() *T_CT_Doc {
+func NewT_CT_Doc(base *XMLElementBase) *T_CT_Doc {
+	if base == nil {
+		base = NewXMLElementBase()
+	}
 	return &T_CT_Doc{
-		base: NewXMLElementBase(),
+		base: base,
 	}
 }
 
@@ -500,9 +506,12 @@ type T_CT_Person struct {
 	a_t_url *string
 }
 
-func NewT_CT_Person() *T_CT_Person {
+func NewT_CT_Person(base *XMLElementBase) *T_CT_Person {
+	if base == nil {
+		base = NewXMLElementBase()
+	}
 	return &T_CT_Person{
-		base: NewXMLElementBase(),
+		base: base,
 	}
 }
 
@@ -603,14 +612,14 @@ func (e *T_CT_Person) UnmarshalXML(ee *etree.Element) {
 		base.SetParent(e.base)
 
 		if base.VarifyETreeTag(cee, "http://tutils.com", "name") {
-			ce := &T_CT_Name{base: base}
+			ce := NewT_CT_Name(base)
 			ce.UnmarshalXML(cee)
 			e.e_t_name = ce
 			continue
 		}
 
 		if base.VarifyETreeTag(cee, "http://tutils.com", "remark") {
-			ce := &T_CT_Doc{base: base}
+			ce := NewT_CT_Doc(base)
 			ce.UnmarshalXML(cee)
 			e.e_t_remark = ce
 			continue
@@ -641,15 +650,15 @@ func (e *T_CT_Person) SetAttrTURL(v string) {
 }
 
 func TestMarshal() {
-	eperson := NewT_CT_Person()
+	eperson := NewT_CT_Person(nil)
 
-	e_t_name := NewT_CT_Name()
+	e_t_name := NewT_CT_Name(nil)
 	e_t_name.Base().AddXMLNS("x", "http://tutils.com")
 	e_t_name.SetAttrEn("t5w0rd")
 
 	eperson.SetElemName(e_t_name)
 
-	e_t_remark := NewT_CT_Doc()
+	e_t_remark := NewT_CT_Doc(nil)
 	e_t_remark.SetText("注释")
 	eperson.SetElemRemark(e_t_remark)
 	eperson.SetAttrSex("male")
