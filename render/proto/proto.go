@@ -495,8 +495,9 @@ type T_CT_Person struct {
 	base *XMLElementBase
 	// tag  string
 
-	e_t_name   *T_CT_Name
-	e_t_remark *T_CT_Doc
+	e_t_name    *T_CT_Name
+	e_t_remark  *T_CT_Doc
+	e_t_arrName []*T_CT_Name
 
 	// AG_PersonBase
 	a_sex *string
@@ -556,6 +557,11 @@ func (e *T_CT_Person) MarshalXML(ns string, tag string) *etree.Element {
 
 	if ce := e.e_t_remark; ce != nil {
 		cee := ce.MarshalXML("http://tutils.com", "remark")
+		ee.AddChild(cee)
+	}
+
+	for _, ce := range e.e_t_arrName {
+		cee := ce.MarshalXML("http://tutils.com", "arrName")
 		ee.AddChild(cee)
 	}
 
@@ -624,17 +630,29 @@ func (e *T_CT_Person) UnmarshalXML(ee *etree.Element) {
 			e.e_t_remark = ce
 			continue
 		}
+
+		if base.VarifyETreeTag(cee, "http://tutils.com", "arrName") {
+			ce := NewT_CT_Name(base)
+			ce.UnmarshalXML(cee)
+			e.e_t_arrName = append(e.e_t_arrName, ce)
+			continue
+		}
 	}
 }
 
 func (e *T_CT_Person) SetElemName(ce *T_CT_Name) {
-	ce.Base().SetParent(e.base)
+	ce.Base().SetParent(e.Base())
 	e.e_t_name = ce
 }
 
 func (e *T_CT_Person) SetElemRemark(ce *T_CT_Doc) {
-	ce.Base().SetParent(e.base)
+	ce.Base().SetParent(e.Base())
 	e.e_t_remark = ce
+}
+
+func (e *T_CT_Person) AddElemArrName(ce *T_CT_Name) {
+	ce.Base().SetParent(e.Base())
+	e.e_t_arrName = append(e.e_t_arrName, ce)
 }
 
 func (e *T_CT_Person) SetAttrSex(v string) {
@@ -655,12 +673,20 @@ func TestMarshal() {
 	e_t_name := NewT_CT_Name(nil)
 	e_t_name.Base().AddXMLNS("x", "http://tutils.com")
 	e_t_name.SetAttrEn("t5w0rd")
-
 	eperson.SetElemName(e_t_name)
 
 	e_t_remark := NewT_CT_Doc(nil)
 	e_t_remark.SetText("注释")
 	eperson.SetElemRemark(e_t_remark)
+
+	var e_t_arrName *T_CT_Name
+	e_t_arrName = NewT_CT_Name(nil)
+	e_t_arrName.SetAttrEn("xxx")
+	eperson.AddElemArrName(e_t_arrName)
+	e_t_arrName = NewT_CT_Name(nil)
+	e_t_arrName.SetAttrEn("yyy")
+	eperson.AddElemArrName(e_t_arrName)
+
 	eperson.SetAttrSex("male")
 	eperson.SetAttrAge("18")
 	eperson.SetAttrTURL("https://www.baidu.com")
@@ -683,7 +709,7 @@ func TestUnmarshal() {
 	fmt.Println("--------------")
 	e_per_doc.ReadFromBytes(data.EPerson)
 
-	eperson := &T_CT_Person{}
+	eperson := NewT_CT_Person(nil)
 	eperson.UnmarshalXML(e_per_doc.Root())
 
 	// root := eperson.MarshalXML("http://example.org", "person")
