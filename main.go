@@ -116,6 +116,6 @@ func main() {
 	// render.TestSample()
 	// render.GenAllSymbolText()
 	// render.TestSample2()
-	// proto.TestMarshal()
-	proto.TestUnmarshal()
+	proto.TestMarshal()
+	// proto.TestUnmarshal()
 }

@@ -354,7 +354,7 @@ func (eb *XMLElementBase) Unmarshal(ee *etree.Element) {
 type XMLElement interface {
 	Base() *XMLElementBase
 
-	MarshalXML(tag string) *etree.Element
+	MarshalXML(ns string, tag string) *etree.Element
 	UnmarshalXML(ee *etree.Element)
 }
 
@@ -362,9 +362,15 @@ var _ XMLElement = (*T_CT_Name)(nil)
 
 type T_CT_Name struct {
 	base *XMLElementBase
-	tag  string
+	// tag  string
 
 	a_en *string
+}
+
+func NewT_CT_Name() *T_CT_Name {
+	return &T_CT_Name{
+		base: NewXMLElementBase(),
+	}
 }
 
 // GetXMLElementBase implements XMLElement.
@@ -372,13 +378,14 @@ func (e *T_CT_Name) Base() *XMLElementBase {
 	return e.base
 }
 
-func (e *T_CT_Name) MarshalXML(tag string) *etree.Element {
-	ee := etree.NewElement(tag)
+func (e *T_CT_Name) MarshalXML(ns string, tag string) *etree.Element {
 	eb := e.Base()
-	if eb == nil {
-		eb = NewXMLElementBase()
-		e.base = eb
-	}
+	// if eb == nil {
+	// 	eb = NewXMLElementBase()
+	// 	e.base = eb
+	// }
+	tag = eb.AutoETreeTag(ns, tag)
+	ee := etree.NewElement(tag)
 	eb.Marshal(ee)
 
 	if e.a_en != nil {
@@ -392,10 +399,8 @@ func (e *T_CT_Name) UnmarshalXML(ee *etree.Element) {
 	// 1. 解析属性
 	// 1.1 解析命名空间定义
 	eb := e.Base()
-	if eb == nil {
-		eb = NewXMLElementBase()
+	if eb.parent == nil {
 		eb.Unmarshal(ee)
-		e.base = eb
 	}
 
 	// 1.2 解析其他属性值
@@ -416,6 +421,10 @@ func (e *T_CT_Name) UnmarshalXML(ee *etree.Element) {
 	// 2.2 解析元素
 }
 
+func (e *T_CT_Name) SetAttrEn(v string) {
+	e.a_en = &v
+}
+
 var _ XMLElement = (*T_CT_Doc)(nil)
 
 type T_CT_Doc struct {
@@ -423,19 +432,27 @@ type T_CT_Doc struct {
 	text string
 }
 
+func NewT_CT_Doc() *T_CT_Doc {
+	return &T_CT_Doc{
+		base: NewXMLElementBase(),
+	}
+}
+
 // Base implements XMLElement.
 func (e *T_CT_Doc) Base() *XMLElementBase {
 	return e.base
 }
 
-func (e *T_CT_Doc) MarshalXML(tag string) *etree.Element {
-	ee := etree.NewElement(tag)
+func (e *T_CT_Doc) MarshalXML(ns string, tag string) *etree.Element {
 	eb := e.Base()
-	if eb == nil {
-		eb = NewXMLElementBase()
-		e.base = eb
-	}
+	// if eb == nil {
+	// 	eb = NewXMLElementBase()
+	// 	e.base = eb
+	// }
+	tag = eb.AutoETreeTag(ns, tag)
+	ee := etree.NewElement(tag)
 	eb.Marshal(ee)
+
 	ee.SetText(e.text)
 	return ee
 }
@@ -444,10 +461,8 @@ func (e *T_CT_Doc) UnmarshalXML(ee *etree.Element) {
 	// 1. 解析属性
 	// 1.1 解析命名空间定义
 	eb := e.Base()
-	if eb == nil {
-		eb = NewXMLElementBase()
+	if eb.parent == nil {
 		eb.Unmarshal(ee)
-		e.base = eb
 	}
 
 	// 1.2 解析其他属性值
@@ -464,11 +479,15 @@ func (e *T_CT_Doc) UnmarshalXML(ee *etree.Element) {
 	e.text = ee.Text()
 }
 
+func (e *T_CT_Doc) SetText(v string) {
+	e.text = v
+}
+
 var _ XMLElement = (*T_CT_Person)(nil)
 
 type T_CT_Person struct {
 	base *XMLElementBase
-	tag  string
+	// tag  string
 
 	e_t_name   *T_CT_Name
 	e_t_remark *T_CT_Doc
@@ -481,31 +500,25 @@ type T_CT_Person struct {
 	a_t_url *string
 }
 
+func NewT_CT_Person() *T_CT_Person {
+	return &T_CT_Person{
+		base: NewXMLElementBase(),
+	}
+}
+
 // Base implements XMLElement.
 func (e *T_CT_Person) Base() *XMLElementBase {
 	return e.base
 }
 
-func (e *T_CT_Person) SetElemName(ce *T_CT_Name) {
-	ce.Base().SetParent(e.base)
-	e.e_t_name = ce
-}
-
-func (e *T_CT_Person) SetElemRemark(ce *T_CT_Doc) {
-	ce.Base().SetParent(e.base)
-	e.e_t_remark = ce
-}
-
-func (e *T_CT_Person) MarshalXML(tag string) *etree.Element {
-	ee := etree.NewElement(tag)
-
-	// attribute
-	// 处理命名空间定义
+func (e *T_CT_Person) MarshalXML(ns string, tag string) *etree.Element {
 	eb := e.Base()
-	if eb == nil {
-		eb = NewXMLElementBase()
-		e.base = eb
-	}
+	// if eb == nil {
+	// 	eb = NewXMLElementBase()
+	// 	e.base = eb
+	// }
+	tag = eb.AutoETreeTag(ns, tag)
+	ee := etree.NewElement(tag)
 	eb.Marshal(ee)
 
 	if e.a_sex != nil {
@@ -527,25 +540,14 @@ func (e *T_CT_Person) MarshalXML(tag string) *etree.Element {
 	}
 
 	// element
-	if e.e_t_name != nil {
-		// TODO: 优先解析base，用来寻找命名空间
-		// ce := e.e_t_name
-		// base := ce.Base()
-		// tag := base.AutoETreeTag("http://tutils.com", "name")
-		// cee := etree.NewElement(tag)
-		// base.Marshal(cee)
-		// ce.MarshalXML(tag, cee)
-		// ee.AddChild(cee)
-
-		tag := eb.AutoETreeTag("http://tutils.com", "name")
-		ce := e.e_t_name.MarshalXML(tag)
-		ee.AddChild(ce)
+	if ce := e.e_t_name; ce != nil {
+		cee := ce.MarshalXML("http://tutils.com", "name")
+		ee.AddChild(cee)
 	}
 
-	if e.e_t_remark != nil {
-		tag := eb.AutoETreeTag("http://tutils.com", "remark")
-		ce := e.e_t_remark.MarshalXML(tag)
-		ee.AddChild(ce)
+	if ce := e.e_t_remark; ce != nil {
+		cee := ce.MarshalXML("http://tutils.com", "remark")
+		ee.AddChild(cee)
 	}
 
 	return ee
@@ -555,10 +557,8 @@ func (e *T_CT_Person) UnmarshalXML(ee *etree.Element) {
 	// 1. 解析属性
 	// 1.1 解析命名空间定义
 	eb := e.Base()
-	if eb == nil {
-		eb = NewXMLElementBase()
+	if eb.parent == nil {
 		eb.Unmarshal(ee)
-		e.base = eb
 	}
 
 	// 1.2 解析其他属性值
@@ -618,48 +618,55 @@ func (e *T_CT_Person) UnmarshalXML(ee *etree.Element) {
 	}
 }
 
-// func TestMarshal() {
-// 	xmlns := tplcontainer.NewSequenceMap[string, string]()
-// 	xmlns.Set("", "http://example.org")
-// 	xmlns.Set("e", "http://example.org")
-// 	xmlns.Set("t", "http://tutils.com")
+func (e *T_CT_Person) SetElemName(ce *T_CT_Name) {
+	ce.Base().SetParent(e.base)
+	e.e_t_name = ce
+}
 
-// 	e_t_name := &T_CT_Name{
-// 		xmlns: xmlns,
-// 	}
-// 	e_t_name.a_en = dup("t5w0rd")
+func (e *T_CT_Person) SetElemRemark(ce *T_CT_Doc) {
+	ce.Base().SetParent(e.base)
+	e.e_t_remark = ce
+}
 
-// 	per := &T_CT_Person{
-// 		xmlns: xmlns,
-// 	}
-// 	per.e_t_name = e_t_name
+func (e *T_CT_Person) SetAttrSex(v string) {
+	e.a_sex = &v
+}
 
-// 	e_t_remark := &CT_Doc{}
-// 	e_t_remark.text = "注释"
-// 	per.e_t_remark = e_t_remark
-// 	per.a_sex = dup("male")
-// 	per.a_age = dup("18")
-// 	per.a_t_url = dup("https://www.baidu.com")
+func (e *T_CT_Person) SetAttrAge(v string) {
+	e.a_age = &v
+}
 
-// 	// xmlns
-// 	// eperson := etree.NewElement("e:person")
-// 	// for _, prefix := range per.xmlns.Order() {
-// 	// 	ns := per.xmlns.MustGet(prefix)
-// 	// 	key := "xmlns"
-// 	// 	if len(prefix) > 0 {
-// 	// 		key += ":" + prefix
-// 	// 	}
-// 	// 	eperson.CreateAttr(key, ns)
-// 	// }
+func (e *T_CT_Person) SetAttrTURL(v string) {
+	e.a_t_url = &v
+}
 
-// 	eperson := per.MarshalXML("e:person")
+func TestMarshal() {
+	eperson := NewT_CT_Person()
 
-// 	e_per_doc := etree.NewDocumentWithRoot(eperson)
-// 	e_per_doc.Indent(4)
-// 	e_per_doc.WriteTo(os.Stdout)
+	e_t_name := NewT_CT_Name()
+	e_t_name.Base().AddXMLNS("x", "http://tutils.com")
+	e_t_name.SetAttrEn("t5w0rd")
 
-// 	fmt.Println("exit")
-// }
+	eperson.SetElemName(e_t_name)
+
+	e_t_remark := NewT_CT_Doc()
+	e_t_remark.SetText("注释")
+	eperson.SetElemRemark(e_t_remark)
+	eperson.SetAttrSex("male")
+	eperson.SetAttrAge("18")
+	eperson.SetAttrTURL("https://www.baidu.com")
+
+	// xmlns
+	eperson.Base().AddXMLNS("", "http://example.org")
+	eperson.Base().AddXMLNS("e", "http://example.org")
+	eperson.Base().AddXMLNS("t", "http://tutils.com")
+	root := eperson.MarshalXML("http://example.org", "person")
+	e_per_doc := etree.NewDocumentWithRoot(root)
+	e_per_doc.Indent(4)
+	e_per_doc.WriteTo(os.Stdout)
+
+	fmt.Println("exit")
+}
 
 func TestUnmarshal() {
 	e_per_doc := etree.NewDocument()
@@ -670,10 +677,10 @@ func TestUnmarshal() {
 	eperson := &T_CT_Person{}
 	eperson.UnmarshalXML(e_per_doc.Root())
 
-	root := eperson.MarshalXML("e:person")
-	e_per_doc_2 := etree.NewDocumentWithRoot(root)
-	e_per_doc_2.Indent(4)
-	e_per_doc_2.WriteTo(os.Stdout)
+	// root := eperson.MarshalXML("http://example.org", "person")
+	// e_per_doc_2 := etree.NewDocumentWithRoot(root)
+	// e_per_doc_2.Indent(4)
+	// e_per_doc_2.WriteTo(os.Stdout)
 
 	fmt.Println("exit", eperson)
 }
