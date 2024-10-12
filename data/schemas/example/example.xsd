@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns="http://example.org"
+    xmlns:t="http://tutils.com"
+    elementFormDefault="qualified"
+    targetNamespace="http://example.org">
+    <xsd:import namespace="http://tutils.com" schemaLocation="tutils.xsd" />
+
+    <xsd:complexType name="CT_CV">
+        <xsd:annotation>
+            <xsd:documentation>简历</xsd:documentation>
+        </xsd:annotation>
+        <xsd:sequence>
+            <xsd:group ref="EG_CVBase" />
+            <xsd:choice minOccurs="0" maxOccurs="unbounded">
+                <xsd:element name="edu" type="CT_Educate" />
+                <xsd:element name="work" type="CT_Work" />
+            </xsd:choice>
+        </xsd:sequence>
+        <xsd:attribute ref="url" />
+        <xsd:attributeGroup ref="t:AG_URL" />
+    </xsd:complexType>
+
+    <xsd:complexType name="CT_Educate">
+        <xsd:sequence>
+            <xsd:element name="remark" type="t:CT_Doc" />
+            <xsd:element ref="t:remark" />
+        </xsd:sequence>
+        <xsd:attributeGroup ref="t:AG_WhereAndDuration" />
+        <xsd:attribute name="finished" type="xsd:boolean" use="optional" default="true" />
+    </xsd:complexType>
+
+    <xsd:complexType name="CT_Work">
+        <xsd:sequence>
+            <xsd:element name="remark" type="t:CT_Doc" />
+        </xsd:sequence>
+        <xsd:attributeGroup ref="t:AG_WhereAndDuration" />
+    </xsd:complexType>
+
+    <xsd:simpleType name="ST_EMail">
+        <xsd:restriction base="xsd:string">
+            <xsd:pattern value="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}" />
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:group name="EG_CVBase">
+        <xsd:annotation>
+            <xsd:documentation>简历基础信息</xsd:documentation>
+        </xsd:annotation>
+        <xsd:sequence>
+            <xsd:element name="baseInfo" type="t:CT_Person" />
+            <xsd:element name="email" type="ST_EMail" />
+        </xsd:sequence>
+    </xsd:group>
+    <xsd:element name="cv" type="CT_CV" />
+    <xsd:element name="person" type="t:CT_Person" />
+    <xsd:element name="remark" type="t:CT_Doc" />
+    <xsd:attribute name="url" type="xsd:string" />
+</xsd:schema>

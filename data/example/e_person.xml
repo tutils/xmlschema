@@ -1,0 +1,6 @@
+<?xml-model href="../schemas/example/example.xsd"?>
+<e:person xmlns="http://example.org" xmlns:e="http://example.org" xmlns:t="http://tutils.com"
+    sex="male" age="18" t:url="https://www.baidu.com">
+    <x:name en="t5w0rd" xmlns:x="http://tutils.com" />
+    <t:remark>个人注释</t:remark>
+</e:person>

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/tutils/xmlschema/boot"
-	"github.com/tutils/xmlschema/render"
+	"github.com/tutils/xmlschema/render/proto"
 )
 
 type GroupShapeNonVisual struct {
@@ -114,5 +114,8 @@ func main() {
 	// tree.TestSample()
 	// render.LoadAllSchema()
 	// render.TestSample()
-	render.GenAllSymbolText()
+	// render.GenAllSymbolText()
+	// render.TestSample2()
+	// proto.TestMarshal()
+	proto.TestUnmarshal()
 }

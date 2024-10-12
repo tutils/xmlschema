@@ -1,0 +1,17 @@
+<?xml-model href="../schemas/example/example.xsd"?>
+<e:cv xmlns="http://example.org" xmlns:e="http://example.org" xmlns:t="http://tutils.com"
+    e:url="https://www.baidu.com" t:url="https://www.google.com">
+    <e:baseInfo sex="male" age="18" xmlns="http://tutils.com">
+        <name en="t5w0rd" />
+        <t:remark>
+        </t:remark>
+    </e:baseInfo>
+    <email>t5w0rd@tutils.com</email>
+    <e:edu name="小学" duration="5" finished="false">
+        <e:remark>教育注释一</e:remark>
+        <t:remark>教育注释二</t:remark>
+    </e:edu>
+    <e:work name="工地" duration="3">
+        <e:remark>工作注释</e:remark>
+    </e:work>
+</e:cv>

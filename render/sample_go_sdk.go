@@ -1,6 +1,8 @@
 package render
 
 import (
+	"encoding/xml"
+	"fmt"
 	"os"
 
 	"github.com/beevik/etree"
@@ -138,3 +140,42 @@ func TestSample() {
 	doc.Indent(4)
 	doc.WriteTo(os.Stdout)
 }
+
+func TestSample2() {
+	bs, _ := os.ReadFile("data/example/persion.xml")
+	doc := etree.NewDocument()
+	err := doc.ReadFromBytes(bs)
+	root := doc.Root()
+	// var doc Persion
+	// err := xml.Unmarshal(bs, &doc)
+	fmt.Println(err, root, "debug")
+}
+
+type Name struct {
+	XMLName xml.Name
+	CN      string `xml:"cn,attr"`
+	EN      string `xml:"en,attr"`
+}
+
+type Persion struct {
+	Sex     string `xml:"sex,attr"`
+	Age     uint16 `xml:"age,attr"`
+	Name    Name   `xml:"name"`
+	Remark  string `xml:"remark"`
+}
+
+// MarshalXML implements xml.Marshaler.
+func (p *Persion) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
+	panic("unimplemented")
+}
+
+// UnmarshalXML implements xml.Unmarshaler.
+func (p *Persion) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
+
+	return nil
+}
+
+var (
+	_ xml.Unmarshaler = (*Persion)(nil)
+	_ xml.Marshaler   = (*Persion)(nil)
+)

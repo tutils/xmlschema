@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -343,6 +344,9 @@ func (r *Renderer) ParseSchemaAttribute(attr *proto.Attribute, fileName string) 
 		typePrefix, symbolType, ok := r.gs.GetSimpleTypeInFile(attr.Type, fileName)
 		if !ok {
 			panic("simpleType not found")
+		}
+		if len(typePrefix) > 0 {
+			typePrefix += ":"
 		}
 
 		r.output("attribute: %s%s(%s%s) // %s", prefix, attr.Name, typePrefix, symbolType.Symbol.Name, parseAnnotaion(attr.Annotation))
@@ -721,8 +725,8 @@ func (r *Renderer) ParseSchemaUnique(uniq *proto.Unique, fileName string) {
 
 func GenAllSymbolText() {
 	gs := NewGlobalScope()
+	// gs.LoadSchemaFilesFromDirectory("data/schemas/example")
 	gs.LoadSchemaFilesFromDirectory("data/schemas/OfficeOpenXML-XMLSchema-Transitional")
-
 	// // 生成定义顺序
 	// orderCtx := newParseContext(gs)
 	// orderCtx.parseRecursive = true
@@ -758,10 +762,8 @@ func GenAllSymbolText() {
 			panic(err)
 		}
 
-		var pth string
-		if len(u.Path) > 0 {
-			pth = u.Path
-		} else {
+		pth := path.Join(u.Host, u.Path)
+		if len(pth) == 0 {
 			pth = strings.ReplaceAll(ns, ":", "_")
 		}
 

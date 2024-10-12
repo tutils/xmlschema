@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns="http://tutils.com"
+    xmlns:t="http://tutils.com"
+    elementFormDefault="qualified"
+    targetNamespace="http://tutils.com">
+    <xsd:complexType name="CT_Person">
+        <xsd:annotation>
+            <xsd:documentation>个人</xsd:documentation>
+        </xsd:annotation>
+        <xsd:sequence>
+            <xsd:element name="name" type="CT_Name" />
+            <xsd:element ref="remark" />
+
+        </xsd:sequence>
+        <xsd:attributeGroup ref="AG_PersonBase" />
+        <xsd:attribute ref="url" />
+    </xsd:complexType>
+
+    <xsd:simpleType name="ST_Sex">
+        <xsd:annotation>
+            <xsd:documentation>性别</xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:token">
+            <xsd:enumeration value="male" />
+            <xsd:enumeration value="female" />
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:simpleType name="ST_Age">
+        <xsd:annotation>
+            <xsd:documentation>年龄</xsd:documentation>
+        </xsd:annotation>
+        <xsd:restriction base="xsd:unsignedShort">
+            <xsd:minInclusive value="0" />
+            <xsd:maxInclusive value="200" />
+        </xsd:restriction>
+    </xsd:simpleType>
+
+    <xsd:complexType name="CT_Name">
+        <xsd:annotation>
+            <xsd:documentation>姓名(国际化)</xsd:documentation>
+        </xsd:annotation>
+        <xsd:attribute name="en" type="xsd:string" />
+    </xsd:complexType>
+
+    <xsd:complexType name="CT_Doc" mixed="true">
+        <xsd:sequence minOccurs="0" maxOccurs="unbounded">
+            <xsd:any processContents="lax" />
+        </xsd:sequence>
+        <xsd:attribute name="source" type="xsd:anyURI" />
+        <xsd:anyAttribute namespace="##other" processContents="lax" />
+    </xsd:complexType>
+
+    <xsd:attributeGroup name="AG_PersonBase">
+        <xsd:attribute name="age" type="ST_Age" />
+        <xsd:attribute name="sex" type="ST_Sex" />
+    </xsd:attributeGroup>
+
+    <xsd:attributeGroup name="AG_WhereAndDuration">
+        <xsd:attribute name="name" type="xsd:string" />
+        <xsd:attribute name="duration" type="xsd:unsignedInt" />
+    </xsd:attributeGroup>
+
+    <xsd:attributeGroup name="AG_URL">
+        <xsd:attribute ref="url" />
+    </xsd:attributeGroup>
+
+    <xsd:element name="remark" type="CT_Doc" />
+    <xsd:element name="person" type="CT_Person" />
+    <xsd:attribute name="url" type="xsd:string" />
+
+</xsd:schema>
