@@ -28,9 +28,10 @@ group引用允许出现minOccurs或maxOccurs属性
 
 对于sequence引用的多个group中存在同名的元素的情况，对于可能造成歧义的可选元素，一律按照本轮排序最前的group算，不会回溯判断
 
+如果sequence.maxOccurs > 1 全部使用Add方法，否则使用Set方法
+
 TODO:
-1. sequence 需要重构，保证定义顺序
-2. 对any和"lax"的处理
+1. 对any和"lax"的处理
 
 */
 
@@ -547,6 +548,23 @@ func (sl *SequenceList) alterExpect() int {
 	}
 }
 
+func (sl *SequenceList) tryAdd(cur int, wrap *XMLElementWrap) bool {
+	// 已经确定可以添加，这里主要进行sequence整体次数判断
+	if sl.restr[cur].NS != wrap.NS || sl.restr[cur].Tag != wrap.Tag {
+		// 匹配当前expect
+		return false
+	}
+	if cur >= len(sl.restr)-1 {
+		sl.occurs++
+		sl.expectIdx = 0
+	} else {
+		sl.expectIdx = cur + 1
+	}
+	wrap.E.Base().SetParent(sl.Base())
+	sl.list = append(sl.list, wrap)
+	return true
+}
+
 // AddElement 待匹配的元素只可能有两种情况：下一个元素或下一个minOccurs>0的元素
 func (sl *SequenceList) AddElement(wrap *XMLElementWrap) bool {
 	if len(sl.restr) == 0 || sl.MaxOccurs == 0 {
@@ -558,24 +576,7 @@ func (sl *SequenceList) AddElement(wrap *XMLElementWrap) bool {
 		return false
 	}
 
-	tryAdd := func(cur int) bool {
-		// 已经确定可以添加，这里主要进行sequence整体次数判断
-		if sl.restr[cur].NS != wrap.NS || sl.restr[cur].Tag != wrap.Tag {
-			// 匹配当前expect
-			return false
-		}
-		if cur >= len(sl.restr)-1 {
-			sl.occurs++
-			sl.expectIdx = 0
-		} else {
-			sl.expectIdx = cur + 1
-		}
-		wrap.E.Base().SetParent(sl.Base())
-		sl.list = append(sl.list, wrap)
-		return true
-	}
-
-	if tryAdd(sl.expectIdx) {
+	if sl.tryAdd(sl.expectIdx, wrap) {
 		return true
 	}
 
@@ -583,7 +584,7 @@ func (sl *SequenceList) AddElement(wrap *XMLElementWrap) bool {
 	if alterExpect < 0 {
 		return false
 	}
-	if tryAdd(alterExpect) {
+	if sl.tryAdd(alterExpect, wrap) {
 		return true
 	}
 	return false

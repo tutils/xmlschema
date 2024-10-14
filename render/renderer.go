@@ -556,6 +556,13 @@ func (r *Renderer) ParseSchemaAll(all *proto.All, fileName string) {
 // (annotation?,(restriction|extension))
 func (r *Renderer) ParseSchemaSimpleContent(sc *proto.SimpleContent, fileName string) {
 	r.output("simpleContent")
+	lv := r.level
+
+	if sc.Restriction != nil {
+		r.level = lv
+		defer r.nextLevel()()
+		r.ParseSchemaRestriction(sc.Restriction, fileName)
+	}
 
 	if sc.Extension != nil {
 		defer r.nextLevel()()
@@ -766,8 +773,10 @@ func (r *Renderer) ParseSchemaUnique(uniq *proto.Unique, fileName string) {
 
 func GenAllSymbolText() {
 	gs := NewGlobalScope()
-	// gs.LoadSchemaFilesFromDirectory("data/schemas/example")
+	gs.LoadSchemaFilesFromDirectory("data/schemas/dc")
 	gs.LoadSchemaFilesFromDirectory("data/schemas/OfficeOpenXML-XMLSchema-Transitional")
+	gs.LoadSchemaFilesFromDirectory("data/schemas/OpenPackagingConventions-XMLSchema")
+	gs.LoadSchemaFilesFromDirectory("data/schemas/example")
 	// // 生成定义顺序
 	// orderCtx := newParseContext(gs)
 	// orderCtx.parseRecursive = true

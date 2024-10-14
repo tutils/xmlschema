@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -24,22 +25,37 @@ const (
 	XMLNamespacePrefix = "xml"
 
 	// schema location
-	XMLSchemaLocation = "http://www.w3.org/2001/xml.xsd"
-	XSSchemaLocation  = "http://www.w3.org/2001/XMLSchema.xsd"
+	XMLSchemaLocation       = "http://www.w3.org/2001/xml.xsd"
+	XML200103SchemaLocation = "http://www.w3.org/2001/03/xml.xsd"
+	XSSchemaLocation        = "http://www.w3.org/2001/XMLSchema.xsd"
+
+	DCSchemaLocation       = "http://dublincore.org/schemas/xmls/qdc/2003/04/02/dc.xsd"
+	DCTermsSchemaLocation  = "http://dublincore.org/schemas/xmls/qdc/2003/04/02/dcterms.xsd"
+	DCMITypeSchemaLocation = "http://dublincore.org/schemas/xmls/qdc/2003/04/02/dcmitype.xsd"
 
 	// local schema location
-	XMLLocalSchemaLocation = "embed:///schemas/xml/xml.xsd"
-	XSLocalSchemaLocation  = "embed:///schemas/xml/XMLSchema.xsd"
+	XMLLocalSchemaLocation       = "embed:///schemas/xml/xml.xsd"
+	XML200103LocalSchemaLocation = "embed:///schemas/xml/xml200103.xsd"
+	XSLocalSchemaLocation        = "embed:///schemas/xml/XMLSchema.xsd"
+
+	DCLocalSchemaLocation       = "embed:///schemas/dc/dc.xsd"
+	DCTermsLocalSchemaLocation  = "embed:///schemas/dc/dcterms.xsd"
+	DCMITypeLocalSchemaLocation = "embed:///schemas/dc/dcmitype.xsd"
 )
 
 var (
 	remote2local = map[string]string{
-		XMLSchemaLocation: XMLLocalSchemaLocation,
-		XSSchemaLocation:  XSLocalSchemaLocation,
+		XMLSchemaLocation:       XMLLocalSchemaLocation,
+		XML200103SchemaLocation: XML200103LocalSchemaLocation,
+		XSSchemaLocation:        XSLocalSchemaLocation,
+		DCSchemaLocation:        DCLocalSchemaLocation,
+		DCTermsSchemaLocation:   DCTermsLocalSchemaLocation,
+		DCMITypeSchemaLocation:  DCMITypeLocalSchemaLocation,
 	}
 
-	xsFs  *FileScope
-	xmlFs *FileScope
+	xsFs        *FileScope
+	xmlFs       *FileScope
+	xml200103Fs *FileScope
 
 	fakeAnySimpleType = &proto.SimpleType{
 		XMLName: xml.Name{
@@ -65,6 +81,9 @@ func init() {
 
 	xmlFs = newFileScope()
 	xmlFs.loadSchema(XMLSchemaLocation, cache)
+
+	xml200103Fs = newFileScope()
+	xml200103Fs.loadSchema(XML200103SchemaLocation, cache)
 }
 
 type FileCache = map[string]*proto.Schema
@@ -102,8 +121,9 @@ func newFileScope() *FileScope {
 func (fs *FileScope) loadSchema(name string, cache FileCache) {
 	if cache == nil {
 		cache = FileCache{
-			XMLSchemaLocation: xmlFs.schema,
-			XSSchemaLocation:  xsFs.schema,
+			XMLSchemaLocation:       xmlFs.schema,
+			XML200103SchemaLocation: xml200103Fs.schema,
+			XSSchemaLocation:        xsFs.schema,
 		}
 	}
 	fs.cache = cache
@@ -270,7 +290,19 @@ func (fs *FileScope) buildNamespaceMap(name string, loadRecord map[string]loadSt
 		symbs.addSimpleType(fakeAnySimpleType, name)
 	}
 
-	dir := filepath.Dir(name)
+	var dir string
+	var local bool
+	u, err := url.Parse(name)
+	if err != nil {
+		panic(err)
+	}
+	if len(u.Scheme) == 0 {
+		local = true
+		dir = filepath.Dir(name)
+	} else {
+		local = false
+		dir = u.Scheme + "://" + u.Host + path.Dir(u.Path)
+	}
 
 	// 从ImportList递归遍历schema定义文件
 	for _, imp := range schema.ImportList {
@@ -285,7 +317,16 @@ func (fs *FileScope) buildNamespaceMap(name string, loadRecord map[string]loadSt
 				panic(err)
 			}
 			if len(u.Scheme) == 0 {
-				impFile = filepath.Join(dir, imp.SchemaLocation)
+				if local {
+					// 文件相对路径
+					impFile = filepath.Join(dir, imp.SchemaLocation)
+				} else {
+					// URI相对路径
+					impFile, err = url.JoinPath(dir, imp.SchemaLocation)
+					if err != nil {
+						panic(err)
+					}
+				}
 			} else {
 				impFile = imp.SchemaLocation
 			}
@@ -433,11 +474,12 @@ func (fs *FileScope) verifyElement(elem *proto.Element) bool {
 			hasCheck = true
 		}
 
-		if hasCheck {
-			return true
-		}
+		// if hasCheck {
+		// 	return true
+		// }
 
-		panic("empty element define")
+		// panic("empty element define")
+		return true
 	}
 
 	if len(elem.Ref) > 0 {
@@ -756,11 +798,29 @@ func (fs *FileScope) verifyAll(all *proto.All) bool {
 }
 
 func (fs *FileScope) verifySimpleContent(sc *proto.SimpleContent) bool {
-	if sc.Extension == nil {
-		panic("empty extension")
+	hasCheck := false
+	if sc.Extension != nil {
+		if !fs.verifyExtension(sc.Extension) {
+			return false
+		}
+		hasCheck = true
 	}
 
-	return fs.verifyExtension(sc.Extension)
+	if sc.Restriction != nil {
+		if hasCheck {
+			panic("multi child element")
+		}
+		if !fs.verifyRestriction(sc.Restriction) {
+			return false
+		}
+		hasCheck = true
+	}
+
+	if hasCheck {
+		return true
+	}
+
+	panic("empty simpleContent")
 }
 
 func (fs *FileScope) verifyComplexContent(cc *proto.ComplexContent) bool {
@@ -772,7 +832,6 @@ func (fs *FileScope) verifyComplexContent(cc *proto.ComplexContent) bool {
 		hasCheck = true
 	}
 
-	// ext
 	if cc.Restriction != nil {
 		if hasCheck {
 			panic("multi child element")
@@ -787,7 +846,7 @@ func (fs *FileScope) verifyComplexContent(cc *proto.ComplexContent) bool {
 		return true
 	}
 
-	panic("empty extension")
+	panic("empty complexContent")
 }
 
 func (fs *FileScope) verifyExtension(ext *proto.Extension) bool {
@@ -861,9 +920,6 @@ func (fs *FileScope) verifyRestriction(rest *proto.Restriction) bool {
 	}
 
 	if rest.SimpleType != nil {
-		if hasCheck {
-			panic("multi child element")
-		}
 		if !fs.verifySimpleType(rest.SimpleType) {
 			return false
 		}

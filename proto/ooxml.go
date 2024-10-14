@@ -118,6 +118,7 @@ type Div struct {
 // documentation
 //
 // [Attributes]
+//     lang
 //     source
 // [Elements]
 //     p
@@ -125,6 +126,7 @@ type Div struct {
 type Documentation struct {
     XMLName xml.Name
 
+    Lang string `xml:"lang,attr,omitempty"`
     Source string `xml:"source,attr,omitempty"`
 
     XMLContent xml.CharData `xml:",chardata"`
@@ -190,6 +192,7 @@ type Import struct {
     SchemaLocation string `xml:"schemaLocation,attr,omitempty"`
     Id string `xml:"id,attr,omitempty"`
 
+    XMLContent xml.CharData `xml:",chardata"`
     Annotation *Annotation `xml:"annotation"`
 }
 // enumeration
@@ -299,18 +302,6 @@ type MaxLength struct {
     Value string `xml:"value,attr,omitempty"`
 
 }
-// anyAttribute
-//
-// [Attributes]
-//     namespace
-//     processContents
-type AnyAttribute struct {
-    XMLName xml.Name
-
-    Namespace string `xml:"namespace,attr,omitempty"`
-    ProcessContents string `xml:"processContents,attr,omitempty"`
-
-}
 // any
 //
 // [Attributes]
@@ -385,6 +376,8 @@ type Key struct {
 //     minOccurs
 //     maxOccurs
 //     ref
+//     abstract
+//     substitutionGroup
 //     id
 // [Elements]
 //     annotation
@@ -399,6 +392,8 @@ type Element struct {
     MinOccurs string `xml:"minOccurs,attr,omitempty"`
     MaxOccurs string `xml:"maxOccurs,attr,omitempty"`
     Ref string `xml:"ref,attr,omitempty"`
+    Abstract string `xml:"abstract,attr,omitempty"`
+    SubstitutionGroup string `xml:"substitutionGroup,attr,omitempty"`
     Id string `xml:"id,attr,omitempty"`
 
     Annotation *Annotation `xml:"annotation"`
@@ -467,6 +462,18 @@ type Choice struct {
 //     sequence
 //     annotation
 // type Sequence Skipped
+// anyAttribute
+//
+// [Attributes]
+//     namespace
+//     processContents
+type AnyAttribute struct {
+    XMLName xml.Name
+
+    Namespace string `xml:"namespace,attr,omitempty"`
+    ProcessContents string `xml:"processContents,attr,omitempty"`
+
+}
 // whiteSpace
 //
 // [Attributes]
@@ -509,13 +516,13 @@ type FractionDigits struct {
 //     length
 //     minLength
 //     maxLength
-//     anyAttribute
 //     sequence
 //     attribute
+//     simpleType
+//     anyAttribute
 //     group
 //     annotation
 //     whiteSpace
-//     simpleType
 //     fractionDigits
 type Restriction struct {
     XMLName xml.Name
@@ -531,13 +538,13 @@ type Restriction struct {
     Length *Length `xml:"length"`
     MinLength *MinLength `xml:"minLength"`
     MaxLength *MaxLength `xml:"maxLength"`
-    AnyAttribute *AnyAttribute `xml:"anyAttribute"`
     Sequence *Sequence `xml:"sequence"`
     AttributeList []*Attribute `xml:"attribute"`
+    SimpleType *SimpleType `xml:"simpleType"`
+    AnyAttribute *AnyAttribute `xml:"anyAttribute"`
     Group *Group `xml:"group"`
     Annotation *Annotation `xml:"annotation"`
     WhiteSpace *WhiteSpace `xml:"whiteSpace"`
-    SimpleType *SimpleType `xml:"simpleType"`
     FractionDigits *FractionDigits `xml:"fractionDigits"`
 }
 // union
@@ -671,18 +678,24 @@ type Extension struct {
 //
 // [Elements]
 //     extension
+//     restriction
 type SimpleContent struct {
     XMLName xml.Name
 
     Extension *Extension `xml:"extension"`
+    Restriction *Restriction `xml:"restriction"`
 }
 // complexContent
 //
+// [Attributes]
+//     mixed
 // [Elements]
 //     extension
 //     restriction
 type ComplexContent struct {
     XMLName xml.Name
+
+    Mixed string `xml:"mixed,attr,omitempty"`
 
     Extension *Extension `xml:"extension"`
     Restriction *Restriction `xml:"restriction"`
@@ -775,6 +788,7 @@ type Notation struct {
 //     xs
 //     dc
 //     dcterms
+//     dcmitype
 //     t
 //     wvml
 //     hfp
@@ -791,8 +805,8 @@ type Notation struct {
 //     element
 //     attributeGroup
 //     attribute
-//     include
 //     annotation
+//     include
 //     notation
 type Schema struct {
     XMLName xml.Name
@@ -814,7 +828,7 @@ type Schema struct {
     ElementList []*Element `xml:"element"`
     AttributeGroupList []*AttributeGroup `xml:"attributeGroup"`
     AttributeList []*Attribute `xml:"attribute"`
-    IncludeList []*Include `xml:"include"`
     AnnotationList []*Annotation `xml:"annotation"`
+    IncludeList []*Include `xml:"include"`
     Notation *Notation `xml:"notation"`
 }

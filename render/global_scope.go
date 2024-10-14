@@ -57,6 +57,7 @@ func NewGlobalScope() *GlobalScope {
 
 	for _, fs := range []*FileScope{
 		xmlFs,
+		xml200103Fs,
 		xsFs,
 	} {
 		gs.cache[fs.name] = fs.schema

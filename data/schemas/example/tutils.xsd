@@ -65,6 +65,8 @@
         <xsd:sequence minOccurs="0" maxOccurs="unbounded">
             <xsd:group ref="EG_TGroup" />
             <xsd:group ref="EG_TGroup2" />
+            <xsd:sequence></xsd:sequence>
+            <xsd:sequence></xsd:sequence>
         </xsd:sequence>
         <xsd:attribute name="name" type="xsd:string" />
     </xsd:complexType>
