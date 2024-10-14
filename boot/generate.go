@@ -124,7 +124,7 @@ func NewContext() *Context {
 // ScanAllSchemaFiles 遍历指定目录下的全部xml schema文件，用于探测schema中使用的元素的数据结构
 func ScanAllSchemaFiles(ctx *Context, path string) {
 	filepath.Walk(path, func(path string, info fs.FileInfo, _ error) error {
-		if info.IsDir() {
+		if info.IsDir() || filepath.Ext(path) != ".xsd" {
 			return nil
 		}
 

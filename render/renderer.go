@@ -386,46 +386,87 @@ func (r *Renderer) ParseSchemaAttributeGroup(attrGrp *proto.AttributeGroup, file
 	}
 }
 
+// // (annotation?,(element|group|choice|sequence|any)*)
+// func (r *Renderer) ParseSchemaSequence_old(seq *proto.Sequence, fileName string) {
+// 	r.output("sequence (%s, %s) // %s", seq.MinOccurs, seq.MaxOccurs, parseAnnotaion(seq.Annotation))
+// 	lv := r.level
+
+// 	if len(seq.ElementList) > 0 {
+// 		r.level = lv
+// 		defer r.nextLevel()()
+// 		for _, elem := range seq.ElementList {
+// 			r.ParseSchemaElement(elem, fileName)
+// 		}
+// 	}
+
+// 	if len(seq.GroupList) > 0 {
+// 		r.level = lv
+// 		defer r.nextLevel()()
+// 		for _, grp := range seq.GroupList {
+// 			r.ParseSchemaGroup(grp, fileName)
+// 		}
+// 	}
+
+// 	if len(seq.ChoiceList) > 0 {
+// 		r.level = lv
+// 		defer r.nextLevel()()
+// 		for _, ch := range seq.ChoiceList {
+// 			r.ParseSchemaChoice(ch, fileName)
+// 		}
+// 	}
+
+// 	if seq.Sequence != nil {
+// 		r.level = lv
+// 		defer r.nextLevel()()
+// 		r.ParseSchemaSequence(seq.Sequence, fileName)
+// 	}
+
+// 	if len(seq.AnyList) > 0 {
+// 		r.level = lv
+// 		defer r.nextLevel()()
+// 		for _, an := range seq.AnyList {
+// 			r.ParseSchemaAny(an, fileName)
+// 		}
+// 	}
+// }
+
 // (annotation?,(element|group|choice|sequence|any)*)
 func (r *Renderer) ParseSchemaSequence(seq *proto.Sequence, fileName string) {
 	r.output("sequence (%s, %s) // %s", seq.MinOccurs, seq.MaxOccurs, parseAnnotaion(seq.Annotation))
 	lv := r.level
 
-	if len(seq.ElementList) > 0 {
-		r.level = lv
-		defer r.nextLevel()()
-		for _, elem := range seq.ElementList {
-			r.ParseSchemaElement(elem, fileName)
-		}
-	}
-
-	if len(seq.GroupList) > 0 {
-		r.level = lv
-		defer r.nextLevel()()
-		for _, grp := range seq.GroupList {
-			r.ParseSchemaGroup(grp, fileName)
-		}
-	}
-
-	if len(seq.ChoiceList) > 0 {
-		r.level = lv
-		defer r.nextLevel()()
-		for _, ch := range seq.ChoiceList {
-			r.ParseSchemaChoice(ch, fileName)
-		}
-	}
-
-	if seq.Sequence != nil {
-		r.level = lv
-		defer r.nextLevel()()
-		r.ParseSchemaSequence(seq.Sequence, fileName)
-	}
-
-	if len(seq.AnyList) > 0 {
-		r.level = lv
-		defer r.nextLevel()()
-		for _, an := range seq.AnyList {
-			r.ParseSchemaAny(an, fileName)
+	for _, part := range seq.NestedParticleList {
+		switch ch := part.(type) {
+		case *proto.Element:
+			r.level = lv
+			func() {
+				defer r.nextLevel()()
+				r.ParseSchemaElement(ch, fileName)
+			}()
+		case *proto.Group:
+			r.level = lv
+			func() {
+				defer r.nextLevel()()
+				r.ParseSchemaGroup(ch, fileName)
+			}()
+		case *proto.Choice:
+			r.level = lv
+			func() {
+				defer r.nextLevel()()
+				r.ParseSchemaChoice(ch, fileName)
+			}()
+		case *proto.Sequence:
+			r.level = lv
+			func() {
+				defer r.nextLevel()()
+				r.ParseSchemaSequence(ch, fileName)
+			}()
+		case *proto.Any:
+			r.level = lv
+			func() {
+				defer r.nextLevel()()
+				r.ParseSchemaAny(ch, fileName)
+			}()
 		}
 	}
 }
@@ -602,43 +643,43 @@ func (r *Renderer) ParseSchemaExtension(ext *proto.Extension, fileName string) {
 // simpleType: (annotation?,(simpleType?,(minExclusive|minInclusive|maxExclusive|maxInclusive|totalDigits|fractionDigits|length|minLength|maxLength|enumeration|whiteSpace|pattern)*))
 // simpleContent: (annotation?,(simpleType?,(minExclusive |minInclusive|maxExclusive|maxInclusive|totalDigits|fractionDigits|length|minLength|maxLength|enumeration|whiteSpace|pattern)*)?,((attribute|attributeGroup)*,anyAttribute?))
 // complexContent: (annotation?,(group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?))
-func (r *Renderer) ParseSchemaRestriction(rest *proto.Restriction, fileName string) {
+func (r *Renderer) ParseSchemaRestriction(restr *proto.Restriction, fileName string) {
 	lv := r.level
-	if len(rest.Base) > 0 {
-		r.output("restriction: %s // %s", rest.Base, parseAnnotaion(rest.Annotation))
-	} else if rest.SimpleType != nil {
-		r.output("restriction: <simpleType> // %s", rest.Base, parseAnnotaion(rest.Annotation))
+	if len(restr.Base) > 0 {
+		r.output("restriction: %s // %s", restr.Base, parseAnnotaion(restr.Annotation))
+	} else if restr.SimpleType != nil {
+		r.output("restriction: <simpleType> // %s", restr.Base, parseAnnotaion(restr.Annotation))
 		r.level = lv
 		defer r.nextLevel()()
-		r.ParseSchemaSimpleType(rest.SimpleType, fileName)
+		r.ParseSchemaSimpleType(restr.SimpleType, fileName)
 	} else {
 		panic("invalid restriction")
 	}
 
-	if len(rest.EnumerationList) > 0 {
+	if len(restr.EnumerationList) > 0 {
 		r.level = lv
 		defer r.nextLevel()()
-		for _, enum := range rest.EnumerationList {
+		for _, enum := range restr.EnumerationList {
 			r.ParseSchemaEnumeration(enum, fileName)
 		}
 	}
 
-	if rest.Group != nil {
+	if restr.Group != nil {
 		r.level = lv
 		defer r.nextLevel()()
-		r.ParseSchemaGroup(rest.Group, fileName)
+		r.ParseSchemaGroup(restr.Group, fileName)
 	}
 
-	if rest.Sequence != nil {
+	if restr.Sequence != nil {
 		r.level = lv
 		defer r.nextLevel()()
-		r.ParseSchemaSequence(rest.Sequence, fileName)
+		r.ParseSchemaSequence(restr.Sequence, fileName)
 	}
 
-	if len(rest.AttributeList) > 0 {
+	if len(restr.AttributeList) > 0 {
 		r.level = lv
 		defer r.nextLevel()()
-		for _, attr := range rest.AttributeList {
+		for _, attr := range restr.AttributeList {
 			r.ParseSchemaAttribute(attr, fileName)
 		}
 	}

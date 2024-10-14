@@ -11,10 +11,10 @@
             <xsd:documentation>简历</xsd:documentation>
         </xsd:annotation>
         <xsd:sequence>
-            <xsd:group ref="EG_CVBase" />
+            <xsd:group ref="EG_CVBase" maxOccurs="unbounded" />
             <xsd:choice minOccurs="0" maxOccurs="unbounded">
                 <xsd:element name="edu" type="CT_Educate" />
-                <xsd:element name="work" type="CT_Work" />
+                <xsd:element name="work" type="t:CT_Work" />
             </xsd:choice>
         </xsd:sequence>
         <xsd:attribute ref="url" />
@@ -30,13 +30,6 @@
         <xsd:attribute name="finished" type="xsd:boolean" use="optional" default="true" />
     </xsd:complexType>
 
-    <xsd:complexType name="CT_Work">
-        <xsd:sequence>
-            <xsd:element name="remark" type="t:CT_Doc" />
-        </xsd:sequence>
-        <xsd:attributeGroup ref="t:AG_WhereAndDuration" />
-    </xsd:complexType>
-
     <xsd:simpleType name="ST_EMail">
         <xsd:restriction base="xsd:string">
             <xsd:pattern value="[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,4}" />
@@ -50,6 +43,13 @@
         <xsd:sequence>
             <xsd:element name="baseInfo" type="t:CT_Person" />
             <xsd:element name="email" type="ST_EMail" />
+        </xsd:sequence>
+    </xsd:group>
+    <xsd:group name="EG_EGroup">
+        <xsd:sequence>
+            <xsd:element name="adoc" type="t:CT_Doc" />
+            <xsd:element name="bdoc" type="t:CT_Doc" minOccurs="0" />
+            <xsd:element name="cdoc" type="t:CT_Doc" minOccurs="0" />
         </xsd:sequence>
     </xsd:group>
     <xsd:element name="cv" type="CT_CV" />

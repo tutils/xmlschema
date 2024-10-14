@@ -23,6 +23,10 @@ import (
 //     {{$elem.Name}}
                 {{- end}}
             {{- end}}
+            {{- if eq $def.Name "sequence"}}
+// type {{$titleCase}} Skipped
+                {{- continue}}
+            {{- end}}
             {{- if and (eq (len $def.Attrs) 0) (eq (len $def.Elems) 0)}}
 type {{$titleCase}} = string
             {{- else}}

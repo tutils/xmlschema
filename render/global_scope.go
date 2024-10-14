@@ -117,7 +117,7 @@ func (gs *GlobalScope) LoadSchema(name string) *FileScope {
 
 func (gs *GlobalScope) LoadSchemaFilesFromDirectory(dir string) {
 	filepath.Walk(dir, func(path string, info fs.FileInfo, _ error) error {
-		if info.IsDir() {
+		if info.IsDir() || filepath.Ext(path) != ".xsd" {
 			return nil
 		}
 

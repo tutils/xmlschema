@@ -245,7 +245,7 @@ func (fs *FileScope) buildNamespaceMap(name string, loadRecord map[string]loadSt
 	} else {
 		switch loadRecord[name] {
 		case loading:
-			fmt.Println("cycle symbs:", name)
+			fmt.Println("cycle xsd ref:", name)
 			return fs.cache[name]
 		case loaded:
 			return fs.cache[name]
@@ -580,6 +580,9 @@ func (fs *FileScope) verifyChoice(ch *proto.Choice) bool {
 		if hasCheck {
 			panic("multi child element")
 		}
+		if !fs.verifyAny(ch.Any) {
+			return false
+		}
 		hasCheck = true
 	}
 
@@ -608,42 +611,77 @@ func (fs *FileScope) verifyChoice(ch *proto.Choice) bool {
 	panic("empty choice")
 }
 
+// 只有XMLSchema.xsd中的sequence存在Annotation
+// func (fs *FileScope) verifySequence_old(seq *proto.Sequence) bool {
+// 	hasCheck := false
+// 	if len(seq.ChoiceList) > 0 {
+// 		for _, ch := range seq.ChoiceList {
+// 			if !fs.verifyChoice(ch) {
+// 				return false
+// 			}
+// 		}
+// 		hasCheck = true
+// 	}
+
+// 	if len(seq.AnyList) > 0 {
+// 		if hasCheck {
+// 			panic("multi child element")
+// 		}
+// 		hasCheck = true
+// 	}
+
+// 	if len(seq.ElementList) > 0 {
+// 		for _, elem := range seq.ElementList {
+// 			if !fs.verifyElement(elem) {
+// 				return false
+// 			}
+// 		}
+// 		hasCheck = true
+// 	}
+
+// 	if len(seq.GroupList) > 0 {
+// 		for _, grp := range seq.GroupList {
+// 			if !fs.verifyGroup(grp) {
+// 				return false
+// 			}
+// 		}
+// 		hasCheck = true
+// 	}
+
+// 	return true
+// }
+
+// 只有XMLSchema.xsd中的sequence存在Annotation
 func (fs *FileScope) verifySequence(seq *proto.Sequence) bool {
-	hasCheck := false
-	if len(seq.ChoiceList) > 0 {
-		for _, ch := range seq.ChoiceList {
+	for _, part := range seq.NestedParticleList {
+		switch ch := part.(type) {
+		case *proto.Element:
+			if !fs.verifyElement(ch) {
+				return false
+			}
+		case *proto.Group:
+			if !fs.verifyGroup(ch) {
+				return false
+			}
+		case *proto.Choice:
 			if !fs.verifyChoice(ch) {
 				return false
 			}
-		}
-		hasCheck = true
-	}
-
-	if len(seq.AnyList) > 0 {
-		if hasCheck {
-			panic("multi child element")
-		}
-		hasCheck = true
-	}
-
-	if len(seq.ElementList) > 0 {
-		for _, elem := range seq.ElementList {
-			if !fs.verifyElement(elem) {
+		case *proto.Sequence:
+			if !fs.verifySequence(ch) {
+				return false
+			}
+		case *proto.Any:
+			if !fs.verifyAny(ch) {
 				return false
 			}
 		}
-		hasCheck = true
 	}
 
-	if len(seq.GroupList) > 0 {
-		for _, grp := range seq.GroupList {
-			if !fs.verifyGroup(grp) {
-				return false
-			}
-		}
-		hasCheck = true
-	}
+	return true
+}
 
+func (fs *FileScope) verifyAny(an *proto.Any) bool {
 	return true
 }
 
@@ -987,17 +1025,6 @@ func (fs *FileScope) verifyTypeRef(name string) bool {
 func (fs *FileScope) verifyElementRef(name string) bool {
 	_, _, ok := fs.GetElement(name)
 	return ok
-
-	// if _, ok := ignorePrefix[prefix]; ok {
-	// 	return true
-	// }
-
-	// ns := fs.prefixMap.MustGet(prefix)
-	// if _, ok := ignoreNamepace[ns]; ok {
-	// 	return true
-	// }
-
-	// return false
 }
 
 func (fs *FileScope) verifyGroupRef(name string) bool {

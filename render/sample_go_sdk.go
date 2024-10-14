@@ -158,10 +158,10 @@ type Name struct {
 }
 
 type Persion struct {
-	Sex     string `xml:"sex,attr"`
-	Age     uint16 `xml:"age,attr"`
-	Name    Name   `xml:"name"`
-	Remark  string `xml:"remark"`
+	Sex    string `xml:"sex,attr"`
+	Age    uint16 `xml:"age,attr"`
+	Name   Name   `xml:"name"`
+	Remark string `xml:"remark"`
 }
 
 // MarshalXML implements xml.Marshaler.
@@ -171,7 +171,6 @@ func (p *Persion) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
 
 // UnmarshalXML implements xml.Unmarshaler.
 func (p *Persion) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {
-
 	return nil
 }
 

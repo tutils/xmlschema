@@ -10,9 +10,9 @@
         </xsd:annotation>
         <xsd:sequence>
             <xsd:element name="name" type="CT_Name" />
-            <xsd:element ref="remark" />
-            <xsd:element name="arrName" minOccurs="0" maxOccurs="unbounded"/>
-
+            <xsd:element ref="remark" minOccurs="0" />
+            <xsd:element name="arrName" minOccurs="0" maxOccurs="unbounded" />
+            <xsd:element name="defbyseq" type="CT_DefBySeq" minOccurs="0" />
         </xsd:sequence>
         <xsd:attributeGroup ref="AG_PersonBase" />
         <xsd:attribute ref="url" />
@@ -53,6 +53,49 @@
         <xsd:anyAttribute namespace="##other" processContents="lax" />
     </xsd:complexType>
 
+    <xsd:complexType name="CT_Work">
+        <xsd:sequence minOccurs="0" maxOccurs="unbounded">
+            <xsd:element name="aName" type="t:CT_Name" />
+            <xsd:element name="bName" type="t:CT_Name" minOccurs="0" maxOccurs="unbounded" />
+        </xsd:sequence>
+        <xsd:attributeGroup ref="AG_WhereAndDuration" />
+    </xsd:complexType>
+
+    <xsd:complexType name="CT_DefBySeq">
+        <xsd:sequence minOccurs="0" maxOccurs="unbounded">
+            <xsd:group ref="EG_TGroup" />
+            <xsd:group ref="EG_TGroup2" />
+        </xsd:sequence>
+        <xsd:attribute name="name" type="xsd:string" />
+    </xsd:complexType>
+
+    <xsd:complexType name="CT_GroupTest">
+        <xsd:sequence>
+            <xsd:group ref="EG_TGroup" />
+            <xsd:group ref="EG_TGroup2" />
+        </xsd:sequence>
+    </xsd:complexType>
+
+    <xsd:group name="EG_TGroup">
+        <xsd:sequence>
+            <xsd:element name="a" type="t:CT_Doc" />
+            <xsd:element name="b" type="t:CT_Doc" minOccurs="0" />
+            <xsd:element name="c" type="t:CT_Doc" minOccurs="0" />
+        </xsd:sequence>
+    </xsd:group>
+    <xsd:group name="EG_TGroup2">
+        <xsd:sequence>
+            <xsd:element name="b" type="t:CT_Doc" maxOccurs="3" />
+            <xsd:element name="d" type="t:CT_Doc" />
+        </xsd:sequence>
+    </xsd:group>
+    <xsd:group name="EG_TGroup3">
+        <xsd:sequence>
+            <xsd:element name="edoc" type="t:CT_Doc" />
+            <xsd:element name="fdoc" type="t:CT_Doc" />
+        </xsd:sequence>
+    </xsd:group>
+
     <xsd:attributeGroup name="AG_PersonBase">
         <xsd:attribute name="age" type="ST_Age" />
         <xsd:attribute name="sex" type="ST_Sex" />
@@ -69,6 +112,7 @@
 
     <xsd:element name="remark" type="CT_Doc" />
     <xsd:element name="person" type="CT_Person" />
+    <xsd:element name="doc" type="CT_Doc" />
     <xsd:attribute name="url" type="xsd:string" />
 
 </xsd:schema>

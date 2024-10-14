@@ -22,6 +22,16 @@ import (
 组、属性组，对于引用的和非引用的，先将其展开，规则与单一元素和单一属性一致。
 1. 对于属性组的引用，完全等价于直接展开；无论是本空间的还是其他空间的，均视作本空间的属性
 2. 如果属性组的引用，属性组里包含引用属性，则直接视为普通引用属性
+
+group定义、group/sequence、group/choice 不允许出现minOccurs或maxOccurs属性
+group引用允许出现minOccurs或maxOccurs属性
+
+对于sequence引用的多个group中存在同名的元素的情况，对于可能造成歧义的可选元素，一律按照本轮排序最前的group算，不会回溯判断
+
+TODO:
+1. sequence 需要重构，保证定义顺序
+2. 对any和"lax"的处理
+
 */
 
 // Unmarshal 步骤
@@ -96,17 +106,34 @@ func (m *XMLNSMap) DefaultNS() string {
 	return m.defNS
 }
 
-// type E_CT_Work struct {
-// 	xmlns XMLNSMap
+// var _ XMLElement = (*E_CT_Work)(nil)
 
-// 	e_e_remark string
+// type E_CT_Work struct {
+// 	base *XMLElementBase
+
+// 	_seqLst []any
 
 // 	// AG_WhereAndDuration
 // 	a_name     string
 // 	a_duration uint16
 // }
 
-// func (e *E_CT_Work) SetRemark(v string) {
+// // Base implements XMLElement.
+// func (e *E_CT_Work) Base() *XMLElementBase {
+// 	panic("unimplemented")
+// }
+
+// // MarshalXML implements XMLElement.
+// func (e *E_CT_Work) MarshalXML(ns string, tag string) *etree.Element {
+// 	panic("unimplemented")
+// }
+
+// // UnmarshalXML implements XMLElement.
+// func (e *E_CT_Work) UnmarshalXML(ee *etree.Element) {
+// 	panic("unimplemented")
+// }
+
+// func (e *E_CT_Work) SetAttrRemark(v string) {
 // }
 
 // type E_CT_Educate struct {
@@ -150,59 +177,6 @@ func dupPtr[T any](ptr *T) *T {
 	t := *ptr
 	return &t
 }
-
-// Go不支持基类方法，使用全局函数
-
-// func MustGetPrefix(e XMLElementBase, ns string) string {
-// 	for cur := e; cur != nil; cur = cur.Parent() {
-// 		xmlns := e.XMLNS()
-// 		if xmlns == nil {
-// 			continue
-// 		}
-
-// 		// 存在命名空间定义
-// 		if prefix, ok := xmlns.GetPrefix(ns); ok {
-// 			return prefix
-// 		}
-// 	}
-
-// 	panic("invalid ns")
-// }
-
-// func GetDefaultNS(e XMLElementBase) string {
-// 	for cur := e; cur != nil; cur = cur.Parent() {
-// 		xmlns := e.XMLNS()
-// 		if xmlns == nil {
-// 			continue
-// 		}
-
-// 		// 存在命名空间定义
-// 		if defNS := xmlns.GetDefaultNS(); defNS != "" {
-// 			return defNS
-// 		}
-// 	}
-
-// 	return ""
-// }
-
-// func VarifyElementSpace(e *XMLElement, ee *etree.Element, ns string) bool {
-// }
-
-// func AddXMLNS(e XMLElementBase, prefix string, ns string) {
-// 	xmlns := e.XMLNS()
-// 	if xmlns == nil {
-// 		xmlns = e.AllocXMLNS()
-// 	}
-
-// 	if prefix == "" {
-// 		xmlns.SetDefaultNS(ns)
-// 		return
-// 	}
-
-// 	xmlns.Set(prefix, ns)
-// }
-
-// var _ XMLElementBase = (*XMLElementBaseOnly)(nil)
 
 type XMLElementBase struct {
 	parent *XMLElementBase
@@ -489,15 +463,330 @@ func (e *T_CT_Doc) SetText(v string) {
 	e.text = v
 }
 
+type XMLElementWrap struct {
+	NS  string
+	Tag string
+	E   XMLElement
+}
+
+func NewElementWrap(ns string, tag string, e XMLElement) *XMLElementWrap {
+	return &XMLElementWrap{
+		NS:  ns,
+		Tag: tag,
+		E:   e,
+	}
+}
+
+type XMLElementRestriction struct {
+	NS        string
+	Tag       string
+	MinOccurs int
+	MaxOccurs int // unbounded: -1
+}
+
+func NewXMLElementRestriction(ns string, tag string, min int, max int) *XMLElementRestriction {
+	return &XMLElementRestriction{
+		NS:        ns,
+		Tag:       tag,
+		MinOccurs: min,
+		MaxOccurs: max,
+	}
+}
+
+type SequenceList struct {
+	base *XMLElementBase
+
+	restr     []*XMLElementRestriction
+	expectIdx int // expect
+	occurs    int // 遍历过的轮数
+	MinOccurs int
+	MaxOccurs int // unbounded: -1
+
+	list []*XMLElementWrap
+}
+
+func NewSequenceList(base *XMLElementBase, restr []*XMLElementRestriction, min int, max int) *SequenceList {
+	return &SequenceList{
+		base:      base,
+		restr:     restr,
+		MinOccurs: min,
+		MaxOccurs: max,
+	}
+}
+
+func (sl *SequenceList) Base() *XMLElementBase {
+	return sl.base
+}
+
+// alterExpect 返回下备选expect元素位置，即下一个minOccurs>0的元素，如果没有下一个元素位置返回-1
+// 可以通过比较返回的元素位置和当前位置来确定是否进入了下一轮
+func (sl *SequenceList) alterExpect() int {
+	first := true
+	for cur := sl.expectIdx; ; {
+		if cur == sl.expectIdx {
+			if !first {
+				// 转回来了
+				return -1
+			}
+			first = false
+		} else {
+			if sl.restr[cur].MinOccurs == 0 {
+				return cur
+			}
+		}
+
+		if cur >= len(sl.restr)-1 {
+			// 准备进入下一轮
+			if sl.MaxOccurs >= 0 && sl.occurs >= sl.MaxOccurs {
+				return -1
+			}
+			cur = 0
+		} else {
+			cur++
+		}
+	}
+}
+
+// AddElement 待匹配的元素只可能有两种情况：下一个元素或下一个minOccurs>0的元素
+func (sl *SequenceList) AddElement(wrap *XMLElementWrap) bool {
+	if len(sl.restr) == 0 || sl.MaxOccurs == 0 {
+		return false
+	}
+
+	if sl.MaxOccurs > 0 && sl.occurs >= sl.MaxOccurs {
+		// 超过最大重复次数
+		return false
+	}
+
+	tryAdd := func(cur int) bool {
+		// 已经确定可以添加，这里主要进行sequence整体次数判断
+		if sl.restr[cur].NS != wrap.NS || sl.restr[cur].Tag != wrap.Tag {
+			// 匹配当前expect
+			return false
+		}
+		if cur >= len(sl.restr)-1 {
+			sl.occurs++
+			sl.expectIdx = 0
+		} else {
+			sl.expectIdx = cur + 1
+		}
+		wrap.E.Base().SetParent(sl.Base())
+		sl.list = append(sl.list, wrap)
+		return true
+	}
+
+	if tryAdd(sl.expectIdx) {
+		return true
+	}
+
+	alterExpect := sl.alterExpect()
+	if alterExpect < 0 {
+		return false
+	}
+	if tryAdd(alterExpect) {
+		return true
+	}
+	return false
+}
+
+func (sl *SequenceList) UnmarshalXML(base *XMLElementBase, ee *etree.Element) {
+	// for {
+
+	// }
+
+	// ce := NewT_CT_Name(base)
+	// ce.UnmarshalXML(cee)
+	// e.seqLst = append(e.seqLst, NewElementWrap(
+	// 	"http://tutils.com",
+	// 	"adoc",
+	// 	ce,
+	// ))
+
+	// if base.VarifyETreeTag(
+	// 	cee,
+	// 	"http://tutils.com",
+	// 	"adoc",
+	// ) {
+
+	// 	continue
+	// }
+}
+
+func (sl *SequenceList) MarshalXML(ee *etree.Element) {
+	for _, ceInfo := range sl.list {
+		cee := ceInfo.E.MarshalXML(ceInfo.NS, ceInfo.Tag)
+		ee.AddChild(cee)
+	}
+}
+
+var _ XMLElement = (*T_CT_DefBySeq)(nil)
+
+type T_CT_DefBySeq struct {
+	base *XMLElementBase
+
+	seqLst *SequenceList
+
+	a_name *string
+}
+
+func NewT_CT_DefBySeq(base *XMLElementBase) *T_CT_DefBySeq {
+	if base == nil {
+		base = NewXMLElementBase()
+	}
+	restr := []*XMLElementRestriction{
+		NewXMLElementRestriction("http://tutils.com", "a", 1, 1),
+		NewXMLElementRestriction("http://tutils.com", "b", 0, 1),
+		NewXMLElementRestriction("http://tutils.com", "c", 0, 1),
+		NewXMLElementRestriction("http://tutils.com", "b", 1, 1),
+		NewXMLElementRestriction("http://tutils.com", "d", 1, 1),
+	}
+	return &T_CT_DefBySeq{
+		base:   base,
+		seqLst: NewSequenceList(base, restr, 0, -1),
+	}
+}
+
+// Base implements XMLElement.
+func (e *T_CT_DefBySeq) Base() *XMLElementBase {
+	return e.base
+}
+
+// MarshalXML implements XMLElement.
+func (e *T_CT_DefBySeq) MarshalXML(ns string, tag string) *etree.Element {
+	eb := e.Base()
+	tag = eb.AutoETreeTag(ns, tag)
+	ee := etree.NewElement(tag)
+	eb.Marshal(ee)
+
+	if e.a_name != nil {
+		ee.CreateAttr("name", *e.a_name)
+	}
+
+	// define by sequence
+	e.seqLst.MarshalXML(ee)
+
+	return ee
+}
+
+// UnmarshalXML implements XMLElement.
+func (e *T_CT_DefBySeq) UnmarshalXML(ee *etree.Element) {
+	// 1. 解析属性
+	// 1.1 解析命名空间定义
+	eb := e.Base()
+	if eb.parent == nil {
+		eb.Unmarshal(ee)
+	}
+
+	// 1.2 解析其他属性值
+	// 1.2.1 其他属性值初始化
+	e.a_name = nil
+
+	// 1.2.2 解析其他属性值
+	for _, attr := range ee.Attr {
+		if attr.Key == "name" && attr.Space == "" {
+			e.a_name = dup(attr.Value)
+			continue
+		}
+	}
+
+	// 2.解析元素
+	// 2.1 元素初始化
+	e.seqLst = nil
+
+	// 2.2 解析元素
+	for _, child := range ee.Child {
+		cee, ok := child.(*etree.Element)
+		if !ok {
+			continue
+		}
+
+		base := &XMLElementBase{}
+		base.Unmarshal(cee)
+		base.SetParent(e.base)
+		// TODO:
+
+		// if base.VarifyETreeTag(
+		// 	cee,
+		// 	"http://tutils.com",
+		// 	"adoc",
+		// ) {
+		// 	ce := NewT_CT_Name(base)
+		// 	ce.UnmarshalXML(cee)
+		// 	e.seqLst = append(e.seqLst, NewElementWrap(
+		// 		"http://tutils.com",
+		// 		"adoc",
+		// 		ce,
+		// 	))
+		// 	continue
+		// }
+
+		// if base.VarifyETreeTag(
+		// 	cee,
+		// 	"http://tutils.com",
+		// 	"bdoc",
+		// ) {
+		// 	ce := NewT_CT_Name(base)
+		// 	ce.UnmarshalXML(cee)
+		// 	e.seqLst = append(e.seqLst, NewElementWrap(
+		// 		"http://tutils.com",
+		// 		"bdoc",
+		// 		ce,
+		// 	))
+		// 	continue
+		// }
+	}
+}
+
+func (e *T_CT_DefBySeq) AddElemA(ce *T_CT_Doc) {
+	wrap := NewElementWrap(
+		"http://tutils.com",
+		"a",
+		ce,
+	)
+	e.seqLst.AddElement(wrap)
+}
+
+func (e *T_CT_DefBySeq) AddElemB(ce *T_CT_Doc) {
+	wrap := NewElementWrap(
+		"http://tutils.com",
+		"b",
+		ce,
+	)
+	e.seqLst.AddElement(wrap)
+}
+
+func (e *T_CT_DefBySeq) AddElemC(ce *T_CT_Doc) {
+	wrap := NewElementWrap(
+		"http://tutils.com",
+		"c",
+		ce,
+	)
+	e.seqLst.AddElement(wrap)
+}
+
+func (e *T_CT_DefBySeq) AddElemD(ce *T_CT_Doc) {
+	wrap := NewElementWrap(
+		"http://tutils.com",
+		"d",
+		ce,
+	)
+	e.seqLst.AddElement(wrap)
+}
+
+func (e *T_CT_DefBySeq) SetAttrName(v string) {
+	e.a_name = &v
+}
+
 var _ XMLElement = (*T_CT_Person)(nil)
 
 type T_CT_Person struct {
 	base *XMLElementBase
 	// tag  string
 
-	e_t_name    *T_CT_Name
-	e_t_remark  *T_CT_Doc
-	e_t_arrName []*T_CT_Name
+	e_t_name     *T_CT_Name
+	e_t_remark   *T_CT_Doc
+	e_t_arrName  []*T_CT_Name
+	e_t_defbyseq *T_CT_DefBySeq
 
 	// AG_PersonBase
 	a_sex *string
@@ -523,10 +812,6 @@ func (e *T_CT_Person) Base() *XMLElementBase {
 
 func (e *T_CT_Person) MarshalXML(ns string, tag string) *etree.Element {
 	eb := e.Base()
-	// if eb == nil {
-	// 	eb = NewXMLElementBase()
-	// 	e.base = eb
-	// }
 	tag = eb.AutoETreeTag(ns, tag)
 	ee := etree.NewElement(tag)
 	eb.Marshal(ee)
@@ -562,6 +847,11 @@ func (e *T_CT_Person) MarshalXML(ns string, tag string) *etree.Element {
 
 	for _, ce := range e.e_t_arrName {
 		cee := ce.MarshalXML("http://tutils.com", "arrName")
+		ee.AddChild(cee)
+	}
+
+	if ce := e.e_t_defbyseq; ce != nil {
+		cee := ce.MarshalXML("http://tutils.com", "defbyseq")
 		ee.AddChild(cee)
 	}
 
@@ -637,6 +927,13 @@ func (e *T_CT_Person) UnmarshalXML(ee *etree.Element) {
 			e.e_t_arrName = append(e.e_t_arrName, ce)
 			continue
 		}
+
+		if base.VarifyETreeTag(cee, "http://tutils.com", "defbyseq") {
+			ce := NewT_CT_DefBySeq(base)
+			ce.UnmarshalXML(cee)
+			e.e_t_defbyseq = ce
+			continue
+		}
 	}
 }
 
@@ -653,6 +950,11 @@ func (e *T_CT_Person) SetElemRemark(ce *T_CT_Doc) {
 func (e *T_CT_Person) AddElemArrName(ce *T_CT_Name) {
 	ce.Base().SetParent(e.Base())
 	e.e_t_arrName = append(e.e_t_arrName, ce)
+}
+
+func (e *T_CT_Person) SetElemDefbyseq(ce *T_CT_DefBySeq) {
+	ce.Base().SetParent(e.Base())
+	e.e_t_defbyseq = ce
 }
 
 func (e *T_CT_Person) SetAttrSex(v string) {
@@ -687,6 +989,22 @@ func TestMarshal() {
 	e_t_arrName.SetAttrEn("yyy")
 	eperson.AddElemArrName(e_t_arrName)
 
+	e_t_defbyseq := NewT_CT_DefBySeq(nil)
+	var doc *T_CT_Doc
+	doc = NewT_CT_Doc(nil)
+	doc.SetText("aaa")
+	e_t_defbyseq.AddElemA(doc)
+	doc = NewT_CT_Doc(nil)
+	doc.SetText("ccc")
+	e_t_defbyseq.AddElemC(doc)
+	doc = NewT_CT_Doc(nil)
+	doc.SetText("bbb")
+	e_t_defbyseq.AddElemB(doc)
+	doc = NewT_CT_Doc(nil)
+	doc.SetText("ddd")
+	e_t_defbyseq.AddElemD(doc)
+	eperson.SetElemDefbyseq(e_t_defbyseq)
+
 	eperson.SetAttrSex("male")
 	eperson.SetAttrAge("18")
 	eperson.SetAttrTURL("https://www.baidu.com")
@@ -696,6 +1014,7 @@ func TestMarshal() {
 	eperson.Base().AddXMLNS("e", "http://example.org")
 	eperson.Base().AddXMLNS("t", "http://tutils.com")
 	root := eperson.MarshalXML("http://example.org", "person")
+
 	e_per_doc := etree.NewDocumentWithRoot(root)
 	e_per_doc.Indent(4)
 	e_per_doc.WriteTo(os.Stdout)
@@ -712,10 +1031,10 @@ func TestUnmarshal() {
 	eperson := NewT_CT_Person(nil)
 	eperson.UnmarshalXML(e_per_doc.Root())
 
-	// root := eperson.MarshalXML("http://example.org", "person")
-	// e_per_doc_2 := etree.NewDocumentWithRoot(root)
-	// e_per_doc_2.Indent(4)
-	// e_per_doc_2.WriteTo(os.Stdout)
+	root := eperson.MarshalXML("http://example.org", "person")
+	e_per_doc_2 := etree.NewDocumentWithRoot(root)
+	e_per_doc_2.Indent(4)
+	e_per_doc_2.WriteTo(os.Stdout)
 
 	fmt.Println("exit", eperson)
 }

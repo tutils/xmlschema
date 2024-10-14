@@ -2,7 +2,14 @@
 <e:person xmlns="http://example.org" xmlns:e="http://example.org" xmlns:t="http://tutils.com"
     sex="male" age="18" t:url="https://www.baidu.com">
     <x:name en="t5w0rd" xmlns:x="http://tutils.com" />
-    <t:remark>个人注释</t:remark>
-    <t:arrName en="aaa"/>
-    <t:arrName en="bbb"/>
+    <t:arrName en="aaa" />
+    <t:arrName en="bbb" />
+    <t:defbyseq name="defbyseq">
+        <t:a>aaa</t:a>
+        <t:c>ccc</t:c>
+        <t:b>bbb</t:b>
+        <t:b>bbb</t:b>
+        <t:b>bbb</t:b>
+        <t:d>ddd</t:d>
+    </t:defbyseq>
 </e:person>

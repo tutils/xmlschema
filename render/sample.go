@@ -38,7 +38,7 @@ func LoadAllSchema() {
 	// r := newParseContext(gs)
 	// ParseSchemaElement(symbol.Symbol, symbol.FileName)
 
-	zr, err := zip.OpenReader("列表样式还原- Case 文件 .pptx")
+	zr, err := zip.OpenReader("testlist.pptx")
 	if err != nil {
 		panic(err)
 	}
