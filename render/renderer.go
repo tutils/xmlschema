@@ -40,8 +40,6 @@ type Renderer struct {
 
 	order            *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
 	forwardDelcOrder *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
-
-	parsingType bool
 }
 
 func NewRenderer(gs *GlobalScope) *Renderer {
@@ -156,17 +154,20 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 		switch typ := symbolType.Symbol.(type) {
 		case *proto.ComplexType:
 			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, refElem.Name, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
-
-			defer r.nextLevel()()
-			r.ParseSchemaComplexType(typ, symbolType.FileName)
+			if r.parseRecursive {
+				defer r.nextLevel()()
+				r.ParseSchemaComplexType(typ, symbolType.FileName)
+			}
 
 		case *proto.SimpleType:
 			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, refElem.Name, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
-
-			defer r.nextLevel()()
-			r.ParseSchemaSimpleType(typ, symbolType.FileName)
+			if r.parseRecursive {
+				defer r.nextLevel()()
+				r.ParseSchemaSimpleType(typ, symbolType.FileName)
+			}
 		}
 	} else if refElem.ComplexType != nil {
+		// 内嵌匿名类型定义
 		r.output("element: %s(<complexType>) (%s, %s) // %s", refElem.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
 		r.level = lv
 		defer r.nextLevel()()
@@ -182,16 +183,6 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 
 // (annotation?,(simpleContent|complexContent|((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?))))
 func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string) {
-	if !r.parseRecursive {
-		if (r.parsingType || r.level > 0) && len(ct.Name) > 0 {
-			return
-		}
-		r.parsingType = true
-		defer func() {
-			r.parsingType = false
-		}()
-	}
-
 	switch r.defineState[ct] {
 	case walkingDependency:
 		// cycle ref
@@ -272,16 +263,6 @@ func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string
 
 // (annotation?,(restriction|list|union))
 func (r *Renderer) ParseSchemaSimpleType(st *proto.SimpleType, fileName string) {
-	if !r.parseRecursive {
-		if (r.parsingType || r.level > 0) && len(st.Name) > 0 {
-			return
-		}
-		r.parsingType = true
-		defer func() {
-			r.parsingType = false
-		}()
-	}
-
 	switch r.defineState[st] {
 	case walkingDependency:
 		// cycle ref
@@ -350,12 +331,15 @@ func (r *Renderer) ParseSchemaAttribute(attr *proto.Attribute, fileName string) 
 		}
 
 		r.output("attribute: %s%s(%s%s) // %s", prefix, attr.Name, typePrefix, symbolType.Symbol.Name, parseAnnotaion(attr.Annotation))
-		defer r.nextLevel()()
-		r.ParseSchemaSimpleType(symbolType.Symbol, symbolType.FileName)
+		if r.parseRecursive {
+			defer r.nextLevel()()
+			r.ParseSchemaSimpleType(symbolType.Symbol, symbolType.FileName)
+		}
 		return
 	}
 
 	if attr.SimpleType != nil {
+		// 内嵌匿名类型定义
 		r.output("attribute: %s(<simpleType>) // %s", attr.Name, parseAnnotaion(attr.Annotation))
 		defer r.nextLevel()()
 		r.ParseSchemaSimpleType(attr.SimpleType, fileName)
@@ -606,11 +590,14 @@ func (r *Renderer) ParseSchemaExtension(ext *proto.Extension, fileName string) {
 	}
 	switch typ := symbolType.Symbol.(type) {
 	case *proto.ComplexType:
-		r.ParseSchemaComplexType(typ, symbolType.FileName)
+		if r.parseRecursive {
+			r.ParseSchemaComplexType(typ, symbolType.FileName)
+		}
 
 	case *proto.SimpleType:
-
-		r.ParseSchemaSimpleType(typ, symbolType.FileName)
+		if r.parseRecursive {
+			r.ParseSchemaSimpleType(typ, symbolType.FileName)
+		}
 	}
 
 	if ext.Sequence != nil {
@@ -715,10 +702,14 @@ func (r *Renderer) ParseSchemaUnion(uni *proto.Union, fileName string) {
 			}
 			switch typ := symbolType.Symbol.(type) {
 			case *proto.ComplexType:
-				r.ParseSchemaComplexType(typ, symbolType.FileName)
+				if r.parseRecursive {
+					r.ParseSchemaComplexType(typ, symbolType.FileName)
+				}
 
 			case *proto.SimpleType:
-				r.ParseSchemaSimpleType(typ, symbolType.FileName)
+				if r.parseRecursive {
+					r.ParseSchemaSimpleType(typ, symbolType.FileName)
+				}
 			}
 		}
 	}
@@ -744,10 +735,14 @@ func (r *Renderer) ParseSchemaList(lst *proto.List, fileName string) {
 		}
 		switch typ := symbolType.Symbol.(type) {
 		case *proto.ComplexType:
-			r.ParseSchemaComplexType(typ, symbolType.FileName)
+			if r.parseRecursive {
+				r.ParseSchemaComplexType(typ, symbolType.FileName)
+			}
 
 		case *proto.SimpleType:
-			r.ParseSchemaSimpleType(typ, symbolType.FileName)
+			if r.parseRecursive {
+				r.ParseSchemaSimpleType(typ, symbolType.FileName)
+			}
 		}
 	}
 
