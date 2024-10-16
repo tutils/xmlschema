@@ -25,6 +25,7 @@
         <xsd:sequence>
             <xsd:element name="remark" type="t:CT_Doc" />
             <xsd:element ref="t:remark" />
+            <xsd:group ref="t:EG_TGroup3" />
         </xsd:sequence>
         <xsd:attributeGroup ref="t:AG_WhereAndDuration" />
         <xsd:attribute name="finished" type="xsd:boolean" use="optional" default="true" />

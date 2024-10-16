@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/beevik/etree"
@@ -28,6 +29,59 @@ type TypeSymbolInfo struct {
 	Define   *boot.TypeDefineBlock
 }
 
+// type TypeRecord struct {
+// 	Name string
+// 	NS   string
+
+// 	ElemList *tplcontainer.SequenceMap[string, int]
+// 	AttrList *tplcontainer.SequenceMap[string, int]
+// }
+
+// func NewTypeRecord(name string) *TypeRecord {
+// 	return &TypeRecord{
+// 		Name:     name,
+// 		ElemList: tplcontainer.NewSequenceMap[string, int](),
+// 		AttrList: tplcontainer.NewSequenceMap[string, int](),
+// 	}
+// }
+
+// AttributeBlock 属性定义块
+type AttributeBlock struct {
+	Name     string
+	NS       string
+	TypeName string
+	TypeNS   string
+	Occurs   int
+}
+
+// ElementBlock 元素定义块
+type ElementBlock struct {
+	Name      string
+	NS        string
+	TypeName  string
+	TypeNS    string
+	MinOccurs int
+	MaxOccurs int
+	Occurs    int
+}
+
+// 类型定义块
+type TypeDefineBlock struct {
+	Name  string
+	NS    string
+	Attrs *tplcontainer.SequenceMap[string, *AttributeBlock]
+	Elems *tplcontainer.SequenceMap[string, *ElementBlock]
+}
+
+func NewTypeDefineBlock(name string, ns string) *TypeDefineBlock {
+	return &TypeDefineBlock{
+		Name:  name,
+		NS:    ns,
+		Attrs: tplcontainer.NewSequenceMap[string, *AttributeBlock](),
+		Elems: tplcontainer.NewSequenceMap[string, *ElementBlock](),
+	}
+}
+
 type Renderer struct {
 	// options
 	parseRecursive bool
@@ -40,6 +94,9 @@ type Renderer struct {
 
 	order            *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
 	forwardDelcOrder *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
+
+	defBlocks []*TypeDefineBlock
+	curDef    *TypeDefineBlock
 }
 
 func NewRenderer(gs *GlobalScope) *Renderer {
@@ -102,6 +159,11 @@ func ParseDocElement(r *Renderer, elem *etree.Element) {
 	r.ParseSchemaElement(symbol.Symbol, symbol.FileName)
 }
 
+func (r *Renderer) namespace(fileName string) string {
+	fs := r.gs.fileMap.MustGet(fileName)
+	return fs.namespace
+}
+
 func parseAnnotaion(anno *proto.Annotation) string {
 	if anno == nil {
 		return ""
@@ -128,6 +190,10 @@ func parseAnnotaion(anno *proto.Annotation) string {
 func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 	var prefix string
 	var refElem *proto.Element
+	var name string
+	block := &ElementBlock{
+		Occurs: 1,
+	}
 	if len(elem.Ref) > 0 {
 		p, symbol, ok := r.gs.GetElementByRef(elem, fileName)
 		if !ok {
@@ -137,9 +203,37 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 		if len(p) > 0 {
 			prefix = p + ":"
 		}
+		ns := r.namespace(symbol.FileName)
+		name = fmt.Sprintf("%s | %s", symbol.Symbol.Name, ns)
+		block.NS = ns
 	} else {
+		ns := r.namespace(fileName)
+		name = fmt.Sprintf("%s | %s", elem.Name, ns)
+		block.NS = ns
 		refElem = elem
 	}
+	block.Name = refElem.Name
+	if refElem.MinOccurs == "" {
+		block.MinOccurs = 1
+	} else {
+		minOccurs, err := strconv.Atoi(refElem.MinOccurs)
+		if err != nil {
+			panic("invalid minOccurs")
+		}
+		block.MinOccurs = minOccurs
+	}
+	if refElem.MaxOccurs == "" {
+		block.MaxOccurs = 1
+	} else if refElem.MaxOccurs == "unbounded" {
+		block.MaxOccurs = -1
+	} else {
+		maxOccurs, err := strconv.Atoi(refElem.MaxOccurs)
+		if err != nil {
+			panic("invalid maxOccurs")
+		}
+		block.MaxOccurs = maxOccurs
+	}
+
 	lv := r.level
 
 	if len(refElem.Type) > 0 {
@@ -158,6 +252,8 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 				defer r.nextLevel()()
 				r.ParseSchemaComplexType(typ, symbolType.FileName)
 			}
+			block.TypeName = typ.Name
+			block.TypeNS = r.namespace(symbolType.FileName)
 
 		case *proto.SimpleType:
 			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, refElem.Name, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
@@ -165,6 +261,8 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 				defer r.nextLevel()()
 				r.ParseSchemaSimpleType(typ, symbolType.FileName)
 			}
+			block.TypeName = typ.Name
+			block.TypeNS = r.namespace(symbolType.FileName)
 		}
 	} else if refElem.ComplexType != nil {
 		// 内嵌匿名类型定义
@@ -172,6 +270,14 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 		r.level = lv
 		defer r.nextLevel()()
 		r.ParseSchemaComplexType(refElem.ComplexType, fileName)
+	}
+
+	if r.curDef != nil {
+		if def, ok := r.curDef.Elems.Get(name); ok {
+			def.Occurs++
+		} else {
+			r.curDef.Elems.Set(name, block)
+		}
 	}
 
 	if refElem.Unique != nil {
@@ -183,6 +289,17 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 
 // (annotation?,(simpleContent|complexContent|((group|all|choice|sequence)?,((attribute|attributeGroup)*,anyAttribute?))))
 func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string) {
+	ns := r.namespace(fileName)
+	rec := NewTypeDefineBlock(ct.Name, ns)
+	r.curDef = rec
+
+	defer func() {
+		if ct.Name != "" {
+			r.defBlocks = append(r.defBlocks, rec)
+			r.curDef = nil
+		}
+	}()
+
 	switch r.defineState[ct] {
 	case walkingDependency:
 		// cycle ref
@@ -263,6 +380,17 @@ func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string
 
 // (annotation?,(restriction|list|union))
 func (r *Renderer) ParseSchemaSimpleType(st *proto.SimpleType, fileName string) {
+	ns := r.namespace(fileName)
+	rec := NewTypeDefineBlock(st.Name, ns)
+	r.curDef = rec
+
+	defer func() {
+		if st.Name != "" {
+			r.defBlocks = append(r.defBlocks, rec)
+			r.curDef = nil
+		}
+	}()
+
 	switch r.defineState[st] {
 	case walkingDependency:
 		// cycle ref
@@ -310,19 +438,31 @@ func (r *Renderer) ParseSchemaSimpleType(st *proto.SimpleType, fileName string) 
 // (annotation?,(simpleType?))
 func (r *Renderer) ParseSchemaAttribute(attr *proto.Attribute, fileName string) {
 	var prefix string
+	var refAttr *proto.Attribute
+	var name string
+	block := &AttributeBlock{
+		Occurs: 1,
+	}
 	if len(attr.Ref) > 0 {
 		p, symbol, ok := r.gs.GetAttributeByRef(attr, fileName)
 		if !ok {
 			panic("invalid attribute")
 		}
-		attr, fileName = symbol.Symbol, symbol.FileName
+		refAttr, fileName = symbol.Symbol, symbol.FileName
 		if len(p) > 0 {
 			prefix = p + ":"
 		}
+		ns := r.namespace(symbol.FileName)
+		name = fmt.Sprintf("@%s | %s", symbol.Symbol.Name, ns)
+		block.NS = ns
+	} else {
+		refAttr = attr
+		name = fmt.Sprintf("@%s", attr.Name)
 	}
+	block.Name = refAttr.Name
 
-	if len(attr.Type) > 0 {
-		typePrefix, symbolType, ok := r.gs.GetSimpleTypeInFile(attr.Type, fileName)
+	if len(refAttr.Type) > 0 {
+		typePrefix, symbolType, ok := r.gs.GetSimpleTypeInFile(refAttr.Type, fileName)
 		if !ok {
 			panic("simpleType not found")
 		}
@@ -330,19 +470,27 @@ func (r *Renderer) ParseSchemaAttribute(attr *proto.Attribute, fileName string) 
 			typePrefix += ":"
 		}
 
-		r.output("attribute: %s%s(%s%s) // %s", prefix, attr.Name, typePrefix, symbolType.Symbol.Name, parseAnnotaion(attr.Annotation))
+		r.output("attribute: %s%s(%s%s) // %s", prefix, refAttr.Name, typePrefix, symbolType.Symbol.Name, parseAnnotaion(refAttr.Annotation))
 		if r.parseRecursive {
 			defer r.nextLevel()()
 			r.ParseSchemaSimpleType(symbolType.Symbol, symbolType.FileName)
 		}
-		return
-	}
 
-	if attr.SimpleType != nil {
+		block.TypeName = symbolType.Symbol.Name
+		block.TypeNS = r.namespace(symbolType.FileName)
+	} else if attr.SimpleType != nil {
 		// 内嵌匿名类型定义
 		r.output("attribute: %s(<simpleType>) // %s", attr.Name, parseAnnotaion(attr.Annotation))
 		defer r.nextLevel()()
 		r.ParseSchemaSimpleType(attr.SimpleType, fileName)
+	}
+
+	if r.curDef != nil {
+		if def, ok := r.curDef.Attrs.Get(name); ok {
+			def.Occurs++
+		} else {
+			r.curDef.Attrs.Set(name, block)
+		}
 	}
 }
 
@@ -766,9 +914,51 @@ func (r *Renderer) ParseSchemaUnique(uniq *proto.Unique, fileName string) {
 	}
 }
 
+var GlobalNSMap = map[string]string{
+	"http://www.w3.org/2001/XMLSchema":                                          "xsd",
+	"http://www.w3.org/XML/1998/namespace":                                      "xml",
+	"http://purl.org/dc/elements/1.1/":                                          "dc",
+	"http://purl.org/dc/terms/":                                                 "dcterms",
+	"http://purl.org/dc/dcmitype/":                                              "dcmitype",
+	"http://schemas.openxmlformats.org/drawingml/2006/chart":                    "c",
+	"http://schemas.openxmlformats.org/officeDocument/2006/relationships":       "r",
+	"http://schemas.openxmlformats.org/drawingml/2006/main":                     "a",
+	"http://schemas.openxmlformats.org/officeDocument/2006/sharedTypes":         "s",
+	"http://schemas.openxmlformats.org/drawingml/2006/diagram":                  "dgm",
+	"http://schemas.openxmlformats.org/drawingml/2006/picture":                  "dpct",
+	"http://schemas.openxmlformats.org/drawingml/2006/lockedCanvas":             "dlc",
+	"http://schemas.openxmlformats.org/drawingml/2006/chartDrawing":             "cdr",
+	"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing":       "xdr",
+	"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing":    "wp",
+	"http://schemas.openxmlformats.org/wordprocessingml/2006/main":              "w",
+	"http://schemas.openxmlformats.org/officeDocument/2006/math":                "m",
+	"http://schemas.openxmlformats.org/schemaLibrary/2006/main":                 "sl",
+	"http://schemas.openxmlformats.org/presentationml/2006/main":                "p",
+	"http://schemas.openxmlformats.org/officeDocument/2006/characteristics":     "char",
+	"http://schemas.openxmlformats.org/officeDocument/2006/bibliography":        "b",
+	"http://schemas.openxmlformats.org/officeDocument/2006/customXml":           "cxml",
+	"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties":   "cp",
+	"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes":      "vt",
+	"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties": "ep",
+	"http://schemas.openxmlformats.org/spreadsheetml/2006/main":                 "x",
+	"urn:schemas-microsoft-com:vml":                                             "v",
+	"urn:schemas-microsoft-com:office:office":                                   "ovml",
+	"urn:schemas-microsoft-com:office:word":                                     "wvml",
+	"urn:schemas-microsoft-com:office:excel":                                    "xvml",
+	"urn:schemas-microsoft-com:office:powerpoint":                               "pvml",
+	"http://schemas.openxmlformats.org/package/2006/content-types":              "pct",
+	"http://schemas.openxmlformats.org/package/2006/metadata/core-properties":   "pcp",
+	"http://schemas.openxmlformats.org/package/2006/digital-signature":          "pds",
+	"http://schemas.openxmlformats.org/package/2006/relationships":              "pr",
+	"http://example.org": "exam",
+	"http://tutils.com":  "ts",
+}
+
 func GenAllSymbolText() {
 	gs := NewGlobalScope()
-	gs.LoadSchemaFilesFromDirectory("data/schemas/dc")
+	gs.LoadSchema(DCSchemaLocation)
+	gs.LoadSchema(DCTermsSchemaLocation)
+	gs.LoadSchema(DCMITypeSchemaLocation)
 	gs.LoadSchemaFilesFromDirectory("data/schemas/OfficeOpenXML-XMLSchema-Transitional")
 	gs.LoadSchemaFilesFromDirectory("data/schemas/OpenPackagingConventions-XMLSchema")
 	gs.LoadSchemaFilesFromDirectory("data/schemas/example")
@@ -917,5 +1107,54 @@ func GenAllSymbolText() {
 				genCtx.ParseSchemaComplexType(symbol.Symbol, symbol.FileName)
 			}
 		}()
+	}
+
+	fp, err := os.Create(filepath.Join("output", "record.go"))
+	if err != nil {
+		panic(err)
+	}
+	defer fp.Close()
+	os.Stdout = fp
+
+	for _, ns := range gs.namespaceMap.Order() {
+		fmt.Println("// " + ns)
+	}
+
+	for _, block := range genCtx.defBlocks {
+		// fmt.Println(block.Name)
+		blockPrefix := GlobalNSMap[block.NS]
+		fmt.Printf("type %s_%s struct {\n", strings.ToUpper(blockPrefix), block.Name)
+		for _, elem := range block.Elems.Order() {
+			def := block.Elems.MustGet(elem)
+			if def.Occurs > 1 {
+				// fmt.Printf("    %s: %d (dup elem)\n", elem, def.Occurs)
+			} else {
+				// fmt.Printf("    %s: %d\n", elem, def.Occurs)
+			}
+			prefix := GlobalNSMap[def.NS]
+			typePrefix := GlobalNSMap[def.TypeNS]
+			if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
+				fmt.Printf("    e_%s_%s []*%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+			} else {
+				fmt.Printf("    e_%s_%s *%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+			}
+		}
+		for _, attr := range block.Attrs.Order() {
+			def := block.Attrs.MustGet(attr)
+			if def.Occurs > 1 {
+				// fmt.Printf("    %s: %d (dup attr)\n", attr, def.Occurs)
+			} else {
+				// fmt.Printf("    %s: %d\n", attr, def.Occurs)
+			}
+			typePrefix := GlobalNSMap[def.TypeNS]
+			if def.NS == "" {
+				fmt.Printf("    a_%s []*%s_%s\n", def.Name, strings.ToUpper(typePrefix), def.TypeName)
+			} else {
+				prefix := GlobalNSMap[def.NS]
+				fmt.Printf("    a_%s_%s []*%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+			}
+
+		}
+		fmt.Println("}\n")
 	}
 }

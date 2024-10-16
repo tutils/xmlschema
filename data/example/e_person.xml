@@ -4,12 +4,10 @@
     <x:name en="t5w0rd" xmlns:x="http://tutils.com" />
     <t:arrName en="aaa" />
     <t:arrName en="bbb" />
-    <t:defbyseq name="defbyseq">
+    <t:a>aaa</t:a>
+    <t:c>ccc</t:c>
+    <!-- <t:defbyseq name="defbyseq">
         <t:a>aaa</t:a>
         <t:c>ccc</t:c>
-        <t:b>bbb</t:b>
-        <t:b>bbb</t:b>
-        <t:b>bbb</t:b>
-        <t:d>ddd</t:d>
-    </t:defbyseq>
+    </t:defbyseq> -->
 </e:person>

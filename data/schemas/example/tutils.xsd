@@ -13,6 +13,7 @@
             <xsd:element ref="remark" minOccurs="0" />
             <xsd:element name="arrName" minOccurs="0" maxOccurs="unbounded" />
             <xsd:element name="defbyseq" type="CT_DefBySeq" minOccurs="0" />
+            <xsd:group ref="EG_TGroup" minOccurs="0" />
         </xsd:sequence>
         <xsd:attributeGroup ref="AG_PersonBase" />
         <xsd:attribute ref="url" />
@@ -64,9 +65,7 @@
     <xsd:complexType name="CT_DefBySeq">
         <xsd:sequence minOccurs="0" maxOccurs="unbounded">
             <xsd:group ref="EG_TGroup" />
-            <xsd:group ref="EG_TGroup2" />
-            <xsd:sequence></xsd:sequence>
-            <xsd:sequence></xsd:sequence>
+            <!-- <xsd:group ref="EG_TGroup2" /> -->
         </xsd:sequence>
         <xsd:attribute name="name" type="xsd:string" />
     </xsd:complexType>

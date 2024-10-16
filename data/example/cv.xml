@@ -9,6 +9,8 @@
     <e:edu name="小学" duration="5" finished="false">
         <e:remark>教育注释一</e:remark>
         <t:remark>教育注释二</t:remark>
+        <t:edoc></t:edoc>
+        <t:fdoc></t:fdoc>
     </e:edu>
     <e:work name="工地" duration="3">
         <t:aName en="aaa" />
