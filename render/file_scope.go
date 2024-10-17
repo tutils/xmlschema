@@ -461,7 +461,6 @@ func (fs *FileScope) verifyElement(elem *proto.Element) bool {
 				return false
 			}
 			hasCheck = true
-
 		}
 
 		if elem.ComplexType != nil {
@@ -474,11 +473,16 @@ func (fs *FileScope) verifyElement(elem *proto.Element) bool {
 			hasCheck = true
 		}
 
-		// if hasCheck {
-		// 	return true
-		// }
+		if len(elem.SubstitutionGroup) > 0 {
+			if hasCheck {
+				panic("multi child attribute")
+			}
+			if !fs.verifyElementRef(elem.SubstitutionGroup) {
+				return false
+			}
+			hasCheck = true
+		}
 
-		// panic("empty element define")
 		return true
 	}
 
@@ -1057,44 +1061,33 @@ func (fs *FileScope) GetAttributeGroup(nameWithPrefix string) (string, *Symbol[*
 	return prefix, symb, ok
 }
 
-func (fs *FileScope) verifyTypeRef(name string) bool {
-	_, _, ok := fs.GetComplexType(name)
+func (fs *FileScope) verifyTypeRef(nameWithPrefix string) bool {
+	_, _, ok := fs.GetComplexType(nameWithPrefix)
 	if ok {
 		return true
 	}
 
-	_, _, ok = fs.GetSimpleType(name)
-	return ok
-
-	// if _, ok := ignorePrefix[prefix]; ok {
-	// 	return true
-	// }
-
-	// ns := fs.prefixMap.MustGet(prefix)
-	// if _, ok := ignoreNamepace[ns]; ok {
-	// 	return true
-	// }
-
-	// return false
-}
-
-func (fs *FileScope) verifyElementRef(name string) bool {
-	_, _, ok := fs.GetElement(name)
+	_, _, ok = fs.GetSimpleType(nameWithPrefix)
 	return ok
 }
 
-func (fs *FileScope) verifyGroupRef(name string) bool {
-	_, _, ok := fs.GetGroup(name)
+func (fs *FileScope) verifyElementRef(nameWithPrefix string) bool {
+	_, _, ok := fs.GetElement(nameWithPrefix)
 	return ok
 }
 
-func (fs *FileScope) verifyAttributeRef(name string) bool {
-	_, _, ok := fs.GetAttribute(name)
+func (fs *FileScope) verifyGroupRef(nameWithPrefix string) bool {
+	_, _, ok := fs.GetGroup(nameWithPrefix)
 	return ok
 }
 
-func (fs *FileScope) verifyAttributeGroupRef(name string) bool {
-	_, _, ok := fs.GetAttributeGroup(name)
+func (fs *FileScope) verifyAttributeRef(nameWithPrefix string) bool {
+	_, _, ok := fs.GetAttribute(nameWithPrefix)
+	return ok
+}
+
+func (fs *FileScope) verifyAttributeGroupRef(nameWithPrefix string) bool {
+	_, _, ok := fs.GetAttributeGroup(nameWithPrefix)
 	return ok
 }
 

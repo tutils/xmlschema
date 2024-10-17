@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/beevik/etree"
-	"github.com/tutils/xmlschema/boot"
 	"github.com/tutils/xmlschema/proto"
 	"github.com/tutils/xmlschema/tplcontainer"
 )
@@ -26,7 +25,7 @@ const (
 type TypeSymbolInfo struct {
 	// Symbol   any
 	FileName string
-	Define   *boot.TypeDefineBlock
+	Define   *TypeDefineBlock
 }
 
 // type TypeRecord struct {
@@ -233,8 +232,16 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 		}
 		block.MaxOccurs = maxOccurs
 	}
-
 	lv := r.level
+
+	elemName := refElem.Name
+	for len(refElem.SubstitutionGroup) > 0 {
+		_, symbol, ok := r.gs.GetElementBySubstitutionGroupRef(refElem, fileName)
+		if !ok {
+			panic("invalid element")
+		}
+		refElem, fileName = symbol.Symbol, symbol.FileName
+	}
 
 	if len(refElem.Type) > 0 {
 		typePrefix, symbolType, ok := r.gs.GetTypeInFile(refElem.Type, fileName)
@@ -247,7 +254,7 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 
 		switch typ := symbolType.Symbol.(type) {
 		case *proto.ComplexType:
-			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, refElem.Name, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
+			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, elemName, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
 			if r.parseRecursive {
 				defer r.nextLevel()()
 				r.ParseSchemaComplexType(typ, symbolType.FileName)
@@ -256,7 +263,7 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 			block.TypeNS = r.namespace(symbolType.FileName)
 
 		case *proto.SimpleType:
-			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, refElem.Name, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
+			r.output("element: %s%s(%s%s) (%s, %s) // %s", prefix, elemName, typePrefix, typ.Name, elem.MinOccurs, elem.MaxOccurs, parseAnnotaion(refElem.Annotation))
 			if r.parseRecursive {
 				defer r.nextLevel()()
 				r.ParseSchemaSimpleType(typ, symbolType.FileName)
@@ -306,7 +313,7 @@ func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string
 		if _, ok := r.forwardDelcOrder.Get(ct.Name); !ok {
 			r.forwardDelcOrder.Set(ct, &TypeSymbolInfo{
 				FileName: fileName,
-				Define:   &boot.TypeDefineBlock{},
+				Define:   &TypeDefineBlock{},
 			})
 		}
 		return
@@ -317,7 +324,7 @@ func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string
 	defer func() {
 		r.order.Set(ct, &TypeSymbolInfo{
 			FileName: fileName,
-			Define:   &boot.TypeDefineBlock{},
+			Define:   rec,
 		})
 		r.defineState[ct] = defined
 	}()
@@ -397,7 +404,7 @@ func (r *Renderer) ParseSchemaSimpleType(st *proto.SimpleType, fileName string) 
 		if _, ok := r.forwardDelcOrder.Get(st.Name); !ok {
 			r.forwardDelcOrder.Set(st, &TypeSymbolInfo{
 				FileName: fileName,
-				Define:   &boot.TypeDefineBlock{},
+				Define:   &TypeDefineBlock{},
 			})
 		}
 		return
@@ -408,7 +415,7 @@ func (r *Renderer) ParseSchemaSimpleType(st *proto.SimpleType, fileName string) 
 	defer func() {
 		r.order.Set(st, &TypeSymbolInfo{
 			FileName: fileName,
-			Define:   &boot.TypeDefineBlock{},
+			Define:   rec,
 		})
 		r.defineState[st] = defined
 	}()
@@ -1120,9 +1127,11 @@ func GenAllSymbolText() {
 		fmt.Println("// " + ns)
 	}
 
+	fmt.Println("package proto")
 	for _, block := range genCtx.defBlocks {
 		// fmt.Println(block.Name)
 		blockPrefix := GlobalNSMap[block.NS]
+		block.Name = strings.ReplaceAll(block.Name, "-", "_")
 		fmt.Printf("type %s_%s struct {\n", strings.ToUpper(blockPrefix), block.Name)
 		for _, elem := range block.Elems.Order() {
 			def := block.Elems.MustGet(elem)
@@ -1133,11 +1142,23 @@ func GenAllSymbolText() {
 			}
 			prefix := GlobalNSMap[def.NS]
 			typePrefix := GlobalNSMap[def.TypeNS]
-			if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
-				fmt.Printf("    e_%s_%s []*%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+
+			def.Name = strings.ReplaceAll(def.Name, "-", "_")
+			def.TypeName = strings.ReplaceAll(def.TypeName, "-", "_")
+			if def.TypeName == "" {
+				if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
+					fmt.Printf("    e_%s_%s []*XMLElementRaw\n", prefix, def.Name)
+				} else {
+					fmt.Printf("    e_%s_%s *XMLElementRaw\n", prefix, def.Name)
+				}
 			} else {
-				fmt.Printf("    e_%s_%s *%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+				if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
+					fmt.Printf("    e_%s_%s []*%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+				} else {
+					fmt.Printf("    e_%s_%s *%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+				}
 			}
+
 		}
 		for _, attr := range block.Attrs.Order() {
 			def := block.Attrs.MustGet(attr)
@@ -1147,13 +1168,16 @@ func GenAllSymbolText() {
 				// fmt.Printf("    %s: %d\n", attr, def.Occurs)
 			}
 			typePrefix := GlobalNSMap[def.TypeNS]
-			if def.NS == "" {
-				fmt.Printf("    a_%s []*%s_%s\n", def.Name, strings.ToUpper(typePrefix), def.TypeName)
+			def.Name = strings.ReplaceAll(def.Name, "-", "_")
+			def.TypeName = strings.ReplaceAll(def.TypeName, "-", "_")
+			if def.TypeName == "" {
+				fmt.Printf("    a_%s *string\n", def.Name)
+			} else if def.NS == "" {
+				fmt.Printf("    a_%s *%s_%s\n", def.Name, strings.ToUpper(typePrefix), def.TypeName)
 			} else {
 				prefix := GlobalNSMap[def.NS]
-				fmt.Printf("    a_%s_%s []*%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
+				fmt.Printf("    a_%s_%s *%s_%s\n", prefix, def.Name, strings.ToUpper(typePrefix), def.TypeName)
 			}
-
 		}
 		fmt.Println("}\n")
 	}

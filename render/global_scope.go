@@ -261,6 +261,20 @@ func (gs *GlobalScope) GetElementByRef(elem *proto.Element, fileName string) (st
 	return prefix, symbol, true
 }
 
+func (gs *GlobalScope) GetElementBySubstitutionGroupRef(elem *proto.Element, fileName string) (string, *Symbol[*proto.Element], bool) {
+	fs, ok := gs.fileMap.Get(fileName)
+	if !ok {
+		return "", nil, false
+	}
+
+	prefix, symbol, ok := fs.GetElement(elem.SubstitutionGroup)
+	if !ok {
+		return prefix, nil, false
+	}
+
+	return prefix, symbol, true
+}
+
 func (gs *GlobalScope) GetGroupByRef(grp *proto.Group, fileName string) (string, *Symbol[*proto.Group], bool) {
 	fs, ok := gs.fileMap.Get(fileName)
 	if !ok {
