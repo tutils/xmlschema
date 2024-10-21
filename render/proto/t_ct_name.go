@@ -27,10 +27,6 @@ func (e *T_CT_Name) Base() *XMLElementBase {
 
 func (e *T_CT_Name) MarshalXML(ns string, tag string) *etree.Element {
 	eb := e.Base()
-	// if eb == nil {
-	// 	eb = NewXMLElementBase()
-	// 	e.base = eb
-	// }
 	tag = eb.AutoETreeTag(ns, tag)
 	ee := etree.NewElement(tag)
 	eb.Marshal(ee)

@@ -47,17 +47,24 @@ type AttributeBlock struct {
 	TypeName string
 	TypeNS   string
 	Occurs   int
+
+	CodeName     string
+	CodeTypeName string
 }
 
 // ElementBlock 元素定义块
 type ElementBlock struct {
-	Name      string
-	NS        string
-	TypeName  string
-	TypeNS    string
-	MinOccurs int
-	MaxOccurs int
-	Occurs    int
+	Name       string
+	NS         string
+	TypeName   string
+	TypeNS     string
+	MinOccurs  int
+	MaxOccurs  int
+	Occurs     int
+	SimpleType bool
+
+	CodeName     string
+	CodeTypeName string
 }
 
 // 类型定义块
@@ -66,6 +73,11 @@ type TypeDefineBlock struct {
 	NS    string
 	Attrs *tplcontainer.SequenceMap[string, *AttributeBlock]
 	Elems *tplcontainer.SequenceMap[string, *ElementBlock]
+
+	SimpleType bool
+	Fallback   bool
+
+	CodeName string
 }
 
 func NewTypeDefineBlock(name string, ns string) *TypeDefineBlock {
@@ -90,8 +102,9 @@ type Renderer struct {
 	order            *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
 	forwardDelcOrder *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
 
-	defBlocks []*TypeDefineBlock
-	curDef    *TypeDefineBlock
+	defBlocks   []*TypeDefineBlock
+	curDef      *TypeDefineBlock
+	mergeOccurs *proto.Sequence // 将下一个元素与父级sequence的MinOccurs和MaxOccurs合并
 }
 
 func NewRenderer(gs *GlobalScope) *Renderer {
@@ -228,6 +241,15 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 		}
 		block.MaxOccurs = maxOccurs
 	}
+	if r.mergeOccurs != nil {
+		if r.mergeOccurs.MaxOccurs == "unbounded" {
+			block.MaxOccurs = -1
+		}
+		if r.mergeOccurs.MinOccurs == "0" {
+			block.MinOccurs = 0
+		}
+		r.mergeOccurs = nil
+	}
 	lv := r.level
 
 	elemName := refElem.Name
@@ -266,6 +288,7 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 			}
 			block.TypeName = typ.Name
 			block.TypeNS = r.namespace(symbolType.FileName)
+			block.SimpleType = true
 		}
 	} else if refElem.ComplexType != nil {
 		// 内嵌匿名类型定义
@@ -278,6 +301,7 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 	if r.curDef != nil {
 		if def, ok := r.curDef.Elems.Get(name); ok {
 			def.Occurs++
+			r.curDef.Fallback = true
 		} else {
 			r.curDef.Elems.Set(name, block)
 		}
@@ -385,6 +409,7 @@ func (r *Renderer) ParseSchemaComplexType(ct *proto.ComplexType, fileName string
 func (r *Renderer) ParseSchemaSimpleType(st *proto.SimpleType, fileName string) {
 	ns := r.namespace(fileName)
 	rec := NewTypeDefineBlock(st.Name, ns)
+	rec.SimpleType = true
 	r.curDef = rec
 
 	defer func() {
@@ -569,6 +594,17 @@ func (r *Renderer) ParseSchemaAttributeGroup(attrGrp *proto.AttributeGroup, file
 func (r *Renderer) ParseSchemaSequence(seq *proto.Sequence, fileName string) {
 	r.output("sequence (%s, %s) // %s", seq.MinOccurs, seq.MaxOccurs, parseAnnotaion(seq.Annotation))
 	lv := r.level
+
+	if seq.MaxOccurs != "" && seq.MaxOccurs != "1" {
+		// 多次出现的sequence
+		r.curDef.Fallback = true
+		if seq.MaxOccurs == "unbounded" && len(seq.NestedParticleList) == 1 {
+			if _, ok := seq.NestedParticleList[0].(*proto.Element); ok {
+				r.mergeOccurs = seq
+				r.curDef.Fallback = false
+			}
+		}
+	}
 
 	for _, part := range seq.NestedParticleList {
 		switch ch := part.(type) {

@@ -41,6 +41,12 @@ sequence
 
 TODO:
 1. 对any和"lax"的处理
+2. 对sequence下有多个any情况下做特殊处理，比如把sequence做个临时命名
+
+识别sequence只有一个元素的数组类型
+识别元素重复导致的降级
+测试生成
+识别choice数组
 
 */
 
