@@ -49,6 +49,10 @@ var GlobalNSMap = map[string]string{
 	"http://tutils.com":  "ts",
 }
 
+func ToTitleUpper(s string) string {
+	return strings.ToUpper(string(s[0])) + s[1:]
+}
+
 func GenAllSymbolText() {
 	gs := NewGlobalScope()
 	gs.LoadSchema(DCSchemaLocation)
@@ -440,22 +444,30 @@ func GenAllSymbolText() {
 					fmt.Printf("			continue\n")
 					fmt.Printf("		}\n")
 				}
-				fmt.Printf("		\n")
-				fmt.Printf("		\n")
-				fmt.Printf("		\n")
-				fmt.Printf("		\n")
-				fmt.Printf("		\n")
+				fmt.Printf("	}\n")
+			}
+			fmt.Printf("}\n\n")
 
-				fmt.Printf("		\n")
-				fmt.Printf("	}\n\n")
+			// SetAttrXxxx
+			for _, attr := range block.Attrs.Order() {
+				def := block.Attrs.MustGet(attr)
+				var name string
+				if def.NS == "" {
+					name = ToTitleUpper(def.Name)
+				} else {
+					prefix := GlobalNSMap[def.NS]
+					name = strings.ToUpper(prefix) + ToTitleUpper(def.Name)
+				}
+				fmt.Printf("func (e *%s) SetAttr%s(v %s) {\n", block.CodeName, name, def.CodeTypeName)
+				fmt.Printf("	e.%s = &v\n", def.CodeName)
+				fmt.Printf("}\n\n")
 			}
 
-			fmt.Printf("	\n")
-			fmt.Printf("	\n")
-			fmt.Printf("	\n")
-
-			fmt.Printf("\n")
-			fmt.Printf("}\n\n")
+			// SetElemXxxx or AddElemXxxx
+			// for _, elem := range block.Elems.Order() {
+			// 	def := block.Elems.MustGet(elem)
+			// 	var name string
+			// }
 
 		} else {
 			fmt.Printf("func (e %s) String() string {\n", block.CodeName)
