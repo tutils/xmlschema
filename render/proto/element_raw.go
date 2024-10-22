@@ -2,8 +2,6 @@ package proto
 
 import "github.com/beevik/etree"
 
-var _ XMLElement = (*XMLElementRaw)(nil)
-
 type attributeWithKey struct {
 	ns    string
 	tag   string
@@ -16,6 +14,8 @@ type elementWithKey struct {
 	e   XMLElement
 }
 
+var _ XMLElement = (*XMLElementRaw)(nil)
+
 type XMLElementRaw struct {
 	base *XMLElementBase
 
@@ -26,6 +26,9 @@ type XMLElementRaw struct {
 }
 
 func NewXMLElementRaw(base *XMLElementBase) *XMLElementRaw {
+	if base == nil {
+		base = NewXMLElementBase()
+	}
 	return &XMLElementRaw{
 		base: base,
 	}

@@ -47,6 +47,8 @@ type AttributeBlock struct {
 	TypeName string
 	TypeNS   string
 	Occurs   int
+	Required bool
+	Default  string
 
 	CodeName     string
 	CodeTypeName string
@@ -62,6 +64,7 @@ type ElementBlock struct {
 	MaxOccurs  int
 	Occurs     int
 	SimpleType bool
+	Required   bool
 
 	CodeName     string
 	CodeTypeName string
@@ -102,9 +105,10 @@ type Renderer struct {
 	order            *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
 	forwardDelcOrder *tplcontainer.SequenceMap[any, *TypeSymbolInfo]
 
-	defBlocks   []*TypeDefineBlock
-	curDef      *TypeDefineBlock
-	mergeOccurs *proto.Sequence // 将下一个元素与父级sequence的MinOccurs和MaxOccurs合并
+	defBlocks      []*TypeDefineBlock
+	curDef         *TypeDefineBlock
+	mergeOccursSeq *proto.Sequence // 将下一个元素与父级sequence的MinOccurs和MaxOccurs合并
+	elemRequired   bool
 }
 
 func NewRenderer(gs *GlobalScope) *Renderer {
@@ -241,14 +245,14 @@ func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
 		}
 		block.MaxOccurs = maxOccurs
 	}
-	if r.mergeOccurs != nil {
-		if r.mergeOccurs.MaxOccurs == "unbounded" {
+	if r.mergeOccursSeq != nil {
+		if r.mergeOccursSeq.MaxOccurs == "unbounded" {
 			block.MaxOccurs = -1
 		}
-		if r.mergeOccurs.MinOccurs == "0" {
+		if r.mergeOccursSeq.MinOccurs == "0" {
 			block.MinOccurs = 0
 		}
-		r.mergeOccurs = nil
+		r.mergeOccursSeq = nil
 	}
 	lv := r.level
 
@@ -483,6 +487,14 @@ func (r *Renderer) ParseSchemaAttribute(attr *proto.Attribute, fileName string) 
 		ns := r.namespace(symbol.FileName)
 		name = fmt.Sprintf("@%s | %s", symbol.Symbol.Name, ns)
 		block.NS = ns
+		if attr.Use == "required" {
+			block.Required = true
+		}
+		if attr.Default != "" {
+			block.Default = attr.Default
+		} else if refAttr.Default != "" {
+			block.Default = refAttr.Default
+		}
 	} else {
 		refAttr = attr
 		name = fmt.Sprintf("@%s", attr.Name)
@@ -490,6 +502,7 @@ func (r *Renderer) ParseSchemaAttribute(attr *proto.Attribute, fileName string) 
 	block.Name = refAttr.Name
 
 	if len(refAttr.Type) > 0 {
+		// 存在属性类型
 		typePrefix, symbolType, ok := r.gs.GetSimpleTypeInFile(refAttr.Type, fileName)
 		if !ok {
 			panic("simpleType not found")
@@ -600,7 +613,7 @@ func (r *Renderer) ParseSchemaSequence(seq *proto.Sequence, fileName string) {
 		r.curDef.Fallback = true
 		if seq.MaxOccurs == "unbounded" && len(seq.NestedParticleList) == 1 {
 			if _, ok := seq.NestedParticleList[0].(*proto.Element); ok {
-				r.mergeOccurs = seq
+				r.mergeOccursSeq = seq
 				r.curDef.Fallback = false
 			}
 		}

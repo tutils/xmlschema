@@ -7,6 +7,10 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/beevik/etree"
+	"github.com/tutils/xmlschema/data"
+	proto "github.com/tutils/xmlschema/output"
 )
 
 var GlobalNSMap = map[string]string{
@@ -216,8 +220,9 @@ func GenAllSymbolText() {
 	os.Stdout = fp
 
 	for _, ns := range gs.namespaceMap.Order() {
-		fmt.Println("// " + ns)
+		fmt.Printf("// %s: %s\n", GlobalNSMap[ns], ns)
 	}
+	fmt.Printf("\n")
 
 	fmt.Printf("package proto\n\n")
 	fmt.Printf("import \"github.com/beevik/etree\"\n\n")
@@ -239,12 +244,13 @@ func GenAllSymbolText() {
 
 		block.CodeName = strings.ToUpper(blockPrefix) + "_" + block.Name
 		if block.Fallback {
-			fmt.Printf("type %s = XMLElementRaw\n\n", block.CodeName)
+			// fmt.Printf("type %s = XMLElementRaw\n\n", block.CodeName)
 			continue
 		}
 
 		// type define
 		if !block.SimpleType {
+			fmt.Printf("var _ XMLElement = (*%s)(nil)\n\n", block.CodeName)
 			fmt.Printf("type %s struct {\n", block.CodeName)
 			fmt.Printf("	base *XMLElementBase\n\n")
 			for _, elem := range block.Elems.Order() {
@@ -261,20 +267,21 @@ func GenAllSymbolText() {
 				def.TypeName = strings.ReplaceAll(def.TypeName, "-", "_")
 
 				def.CodeName = fmt.Sprintf("e_%s_%s", prefix, def.Name)
-				def.CodeTypeName = fmt.Sprintf("%s_%s", strings.ToUpper(typePrefix), def.TypeName)
-
 				if def.TypeName == "" {
-					if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
-						fmt.Printf("    %s []*XMLElementRaw\n", def.CodeName)
-					} else {
-						fmt.Printf("    %s *XMLElementRaw\n", def.CodeName)
-					}
+					// 暂时也按照fallback逻辑走后，TODO：内嵌类型定义外置
+					def.CodeTypeName = "XMLElementRaw"
 				} else {
-					if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
-						fmt.Printf("    %s []*%s\n", def.CodeName, def.CodeTypeName)
-					} else {
-						fmt.Printf("    %s *%s\n", def.CodeName, def.CodeTypeName)
-					}
+					def.CodeTypeName = fmt.Sprintf("%s_%s", strings.ToUpper(typePrefix), def.TypeName)
+				}
+				if _, ok := fallbackMap[def.CodeTypeName]; ok {
+					// 降级类型转换
+					def.CodeTypeName = "XMLElementRaw"
+				}
+
+				if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
+					fmt.Printf("    %s []*%s\n", def.CodeName, def.CodeTypeName)
+				} else {
+					fmt.Printf("    %s *%s\n", def.CodeName, def.CodeTypeName)
 				}
 			}
 			for _, attr := range block.Attrs.Order() {
@@ -421,15 +428,12 @@ func GenAllSymbolText() {
 					def := block.Elems.MustGet(elem)
 					fmt.Printf("		if base.VarifyETreeTag(cee, \"%s\", \"%s\") {\n", def.NS, def.Name)
 					if !def.SimpleType {
-						if _, ok := fallbackMap[def.CodeTypeName]; ok {
-							fmt.Printf("			ce := NewXMLElementRaw(base)\n")
-						} else {
-							if def.TypeName == "" {
-								fmt.Printf("			ce := NewXMLElementRaw(base)\n")
-							} else {
-								fmt.Printf("			ce := New%s(base)\n", def.CodeTypeName)
-							}
-						}
+						fmt.Printf("			ce := New%s(base)\n", def.CodeTypeName)
+						// if _, ok := fallbackMap[def.CodeTypeName]; ok {
+						// 	fmt.Printf("			ce := NewXMLElementRaw(base)\n")
+						// } else {
+
+						// }
 						fmt.Printf("			ce.UnmarshalXML(cee)\n")
 					} else {
 						fmt.Printf("			ce := New%s(cee.Text())\n", def.CodeTypeName)
@@ -451,28 +455,72 @@ func GenAllSymbolText() {
 			// SetAttrXxxx
 			for _, attr := range block.Attrs.Order() {
 				def := block.Attrs.MustGet(attr)
-				var name string
+				var attrTitleName string
 				if def.NS == "" {
-					name = ToTitleUpper(def.Name)
+					// 非引用属性
+					attrTitleName = ToTitleUpper(def.Name)
 				} else {
 					prefix := GlobalNSMap[def.NS]
-					name = strings.ToUpper(prefix) + ToTitleUpper(def.Name)
+					attrTitleName = strings.ToUpper(prefix) + ToTitleUpper(def.Name)
 				}
-				fmt.Printf("func (e *%s) SetAttr%s(v %s) {\n", block.CodeName, name, def.CodeTypeName)
+				fmt.Printf("func (e *%s) SetAttr%s(v %s) {\n", block.CodeName, attrTitleName, def.CodeTypeName)
 				fmt.Printf("	e.%s = &v\n", def.CodeName)
 				fmt.Printf("}\n\n")
 			}
 
 			// SetElemXxxx or AddElemXxxx
-			// for _, elem := range block.Elems.Order() {
-			// 	def := block.Elems.MustGet(elem)
-			// 	var name string
-			// }
-
+			for _, elem := range block.Elems.Order() {
+				def := block.Elems.MustGet(elem)
+				var elemTitleName string
+				if block.NS == def.NS {
+					// 本空间元素
+					elemTitleName = ToTitleUpper(def.Name)
+				} else {
+					prefix := GlobalNSMap[def.NS]
+					elemTitleName = strings.ToUpper(prefix) + ToTitleUpper(def.Name)
+				}
+				if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
+					// 数组
+					fmt.Printf("func (e *%s) AddElem%s(ce *%s) {\n", block.CodeName, elemTitleName, def.CodeTypeName)
+					if !def.SimpleType {
+						fmt.Printf("	ce.Base().SetParent(e.Base())\n")
+					}
+					fmt.Printf("	e.%s = append(e.%s, ce)\n", def.CodeName, def.CodeName)
+				} else {
+					fmt.Printf("func (e *%s) SetElem%s(ce *%s) {\n", block.CodeName, elemTitleName, def.CodeTypeName)
+					if !def.SimpleType {
+						fmt.Printf("	ce.Base().SetParent(e.Base())\n")
+					}
+					fmt.Printf("	e.%s = ce\n", def.CodeName)
+				}
+				fmt.Printf("}\n\n")
+			}
 		} else {
 			fmt.Printf("func (e %s) String() string {\n", block.CodeName)
 			fmt.Printf("	return string(e)\n")
 			fmt.Printf("}\n\n")
 		}
 	}
+
+	fmt.Println("exit")
+}
+
+func Test() {
+	// Test Unmarshal
+	epsld := etree.NewDocument()
+	fmt.Println(string(data.PSld))
+	fmt.Println("--------------")
+	epsld.ReadFromBytes(data.PSld)
+
+	psld := proto.NewP_CT_Slide(nil)
+	psld.UnmarshalXML(epsld.Root())
+
+	root := psld.MarshalXML(
+		"http://schemas.openxmlformats.org/presentationml/2006/main",
+		"sld",
+	)
+	epsld2 := etree.NewDocumentWithRoot(root)
+	epsld2.Indent(4)
+	epsld2.WriteTo(os.Stdout)
+	fmt.Println("exit")
 }
