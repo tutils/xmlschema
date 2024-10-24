@@ -56,6 +56,9 @@ type AttributeBlock struct {
 
 // ElementBlock 元素定义块
 type ElementBlock struct {
+	Choice    bool // 是choice
+	ChoiceIdx int
+
 	Name       string
 	NS         string
 	TypeName   string
@@ -65,6 +68,7 @@ type ElementBlock struct {
 	Occurs     int
 	SimpleType bool
 	Required   bool
+	Path       ElementPath
 
 	CodeName     string
 	CodeTypeName string
@@ -108,7 +112,9 @@ type Renderer struct {
 	defBlocks      []*TypeDefineBlock
 	curDef         *TypeDefineBlock
 	mergeOccursSeq *proto.Sequence // 将下一个元素与父级sequence的MinOccurs和MaxOccurs合并
-	elemRequired   bool
+	// elemRequired   bool
+
+	pathBuilder *ElementPathBuilder
 }
 
 func NewRenderer(gs *GlobalScope) *Renderer {
@@ -117,6 +123,8 @@ func NewRenderer(gs *GlobalScope) *Renderer {
 		defineState:      make(map[any]definedState),
 		order:            tplcontainer.NewSequenceMap[any, *TypeSymbolInfo](),
 		forwardDelcOrder: tplcontainer.NewSequenceMap[any, *TypeSymbolInfo](),
+
+		pathBuilder: NewElementPathBuilder(),
 	}
 }
 
@@ -200,12 +208,14 @@ func parseAnnotaion(anno *proto.Annotation) string {
 
 // (annotation?,((simpleType|complexType)?,(unique|key|keyref)*))
 func (r *Renderer) ParseSchemaElement(elem *proto.Element, fileName string) {
+	block := &ElementBlock{
+		Occurs: 1,
+		Path:   r.pathBuilder.Path(),
+	}
+
 	var prefix string
 	var refElem *proto.Element
 	var name string
-	block := &ElementBlock{
-		Occurs: 1,
-	}
 	if len(elem.Ref) > 0 {
 		p, symbol, ok := r.gs.GetElementByRef(elem, fileName)
 		if !ok {
@@ -603,8 +613,14 @@ func (r *Renderer) ParseSchemaAttributeGroup(attrGrp *proto.AttributeGroup, file
 // 	}
 // }
 
+// var chrec = make(map[*proto.Choice]int)
+// var chrec2 = make(map[*TypeDefineBlock]int)
+
 // (annotation?,(element|group|choice|sequence|any)*)
 func (r *Renderer) ParseSchemaSequence(seq *proto.Sequence, fileName string) {
+	r.pathBuilder.Push(seq)
+	defer r.pathBuilder.Pop()
+
 	r.output("sequence (%s, %s) // %s", seq.MinOccurs, seq.MaxOccurs, parseAnnotaion(seq.Annotation))
 	lv := r.level
 
@@ -688,6 +704,9 @@ func (r *Renderer) ParseSchemaGroup(grp *proto.Group, fileName string) {
 
 // (annotation?,(element|group|choice|sequence|any)*)
 func (r *Renderer) ParseSchemaChoice(ch *proto.Choice, fileName string) {
+	r.pathBuilder.Push(ch)
+	defer r.pathBuilder.Pop()
+
 	r.output("choice (%s, %s) // %s", ch.MinOccurs, ch.MaxOccurs, parseAnnotaion(ch.Annotation))
 	lv := r.level
 

@@ -1,29 +1,30 @@
 package proto
 
-import "github.com/beevik/etree"
+import (
+	"github.com/beevik/etree"
+	"github.com/tutils/xmlschema/tplcontainer"
+)
 
-var _ XMLElement = (*Choice)(nil)
+// var _ XMLElement = (*ElementContainter)(nil)
 
-type Choice struct {
+type ElementContainter struct {
 	base *XMLElementBase
 
-	attrList []*attributeWithKey
-
-	elemList []*elementWithKey
-	text     string
+	cur   string
+	elems *tplcontainer.SequenceMap[string, *elementWithKey]
 }
 
 // Base implements XMLElement.
-func (e *Choice) Base() *XMLElementBase {
+func (e *ElementContainter) Base() *XMLElementBase {
 	return e.base
 }
 
 // MarshalXML implements XMLElement.
-func (e *Choice) MarshalXML(ns string, tag string) *etree.Element {
+func (e *ElementContainter) MarshalXML(ns string, tag string) *etree.Element {
 	panic("unimplemented")
 }
 
 // UnmarshalXML implements XMLElement.
-func (e *Choice) UnmarshalXML(ee *etree.Element) {
+func (e *ElementContainter) UnmarshalXML(ee *etree.Element) {
 	panic("unimplemented")
 }

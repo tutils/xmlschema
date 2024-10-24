@@ -35,3 +35,28 @@ func (s *Stack[T]) Top() (T, bool) {
 func (s *Stack[T]) Len() int {
 	return s.list.Len()
 }
+
+func (s *Stack[T]) BottomIterator() StackIterator[T] {
+	return StackIterator[T]{e: s.list.Front()}
+}
+
+type StackIterator[T any] struct {
+	e *list.Element
+}
+
+func (it StackIterator[T]) Next() StackIterator[T] {
+	if !it.Valid() {
+		var zero StackIterator[T]
+		return zero
+	}
+
+	return StackIterator[T]{e: it.e.Next()}
+}
+
+func (it StackIterator[T]) Valid() bool {
+	return it.e != nil
+}
+
+func (it StackIterator[T]) Value() T {
+	return it.e.Value.(T)
+}

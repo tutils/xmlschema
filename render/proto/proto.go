@@ -9,6 +9,12 @@ import (
 )
 
 /*
+重点解决的问题：
+1. 如何解决重名元素/属性
+2. 如何搜寻命名空间定义
+3. 对于group、attributeGroup的处理方式
+4. choice和sequence，打平后，元素之间互斥判断
+
 1. 成员前缀解决跨空间引用group和attributeGroup时，展开token后名字相同问题
 2. xmlns成员，前缀与命名空间的映射
 
@@ -38,6 +44,59 @@ sequence
 	2. maxOccurs>1
 		2.1 子元素只有一个：等价于一个元素的数组
 		2.2 子元素不止一个：使用兜底结构（xml基本操作方法）
+
+choice
+	1. 只定义类型下的第一级choice，并按序号命名
+	2. 元素要标明属于哪个一级choice
+	2. 如果父级choice为unbounded，递归子元素全部映射Add方法
+
+Set() {
+	root choice1
+		A
+		B(unbounded)
+		choice2 (unbounded)
+			C
+			choice3
+				D
+		choice4
+			E
+			sequence1
+				F
+				G
+				choice5
+					H
+					I
+		
+	c1/c2
+	c1/c2/c3
+	c1/c4
+	c1/c4/s1
+	c1/c4/s1/c5
+	c1/c2/c3/D
+	c1/c4/E
+	c1/c4/s1/F
+	c1/c4/s1/G
+	c1/c4/s1/c5/H
+	c1/c4/s1/c5/I
+
+	c1/c2/c3
+	c1/c4/s1/G
+	c1/c4/s1/c5/H
+
+	有一个多叉树状的数据结构，其中叶子节点为实际数据使用大写字母表示；非叶子节为容器节点用小写字母表示，非叶子节点有两种：c和s。其中c下的子节点均为互斥关系，s下的子节点为非互斥关系。节点可以通过路径表示，例如：
+	c1/c2
+	c1/c2/c3
+	c1/c4
+	c1/c4/s1
+	c1/c4/s1/c5
+	c1/c2/c3/D
+	c1/c4/E
+	c1/c4/s1/F
+	c1/c4/s1/G
+	c1/c4/s1/c5/H
+	c1/c4/s1/c5/I
+	如果想判断任意叶子节点之间是否互斥，应该怎么做？
+}
 
 TODO:
 1. 对any和"lax"的处理

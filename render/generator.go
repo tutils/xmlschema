@@ -85,14 +85,11 @@ func GenAllSymbolText() {
 	// }
 
 	// 按命名空间生成
-	genCtx := NewRenderer(gs)
-	genCtx.parseRecursive = false
-	genCtx.verbose = true
+	r := NewRenderer(gs)
+	r.parseRecursive = false
+	r.verbose = true
 
-	stdout := os.Stdout
-	defer func() {
-		os.Stdout = stdout
-	}()
+	defer ioredirect(stdout)()
 
 	for _, ns := range gs.namespaceMap.Order() {
 		u, err := url.Parse(ns)
@@ -122,7 +119,7 @@ func GenAllSymbolText() {
 			os.Stdout = fp
 			for _, name := range symbs.elementMap.Order() {
 				symbol := symbs.elementMap.MustGet(name)
-				genCtx.ParseSchemaElement(symbol.Symbol, symbol.FileName)
+				r.ParseSchemaElement(symbol.Symbol, symbol.FileName)
 			}
 		}()
 
@@ -139,7 +136,7 @@ func GenAllSymbolText() {
 			os.Stdout = fp
 			for _, name := range symbs.groupMap.Order() {
 				symbol := symbs.groupMap.MustGet(name)
-				genCtx.ParseSchemaGroup(symbol.Symbol, symbol.FileName)
+				r.ParseSchemaGroup(symbol.Symbol, symbol.FileName)
 			}
 		}()
 
@@ -156,7 +153,7 @@ func GenAllSymbolText() {
 			os.Stdout = fp
 			for _, name := range symbs.attributeMap.Order() {
 				symbol := symbs.attributeMap.MustGet(name)
-				genCtx.ParseSchemaAttribute(symbol.Symbol, symbol.FileName)
+				r.ParseSchemaAttribute(symbol.Symbol, symbol.FileName)
 			}
 		}()
 
@@ -173,7 +170,7 @@ func GenAllSymbolText() {
 			os.Stdout = fp
 			for _, name := range symbs.attributeGroupMap.Order() {
 				symbol := symbs.attributeGroupMap.MustGet(name)
-				genCtx.ParseSchemaAttributeGroup(symbol.Symbol, symbol.FileName)
+				r.ParseSchemaAttributeGroup(symbol.Symbol, symbol.FileName)
 			}
 		}()
 
@@ -190,7 +187,7 @@ func GenAllSymbolText() {
 			os.Stdout = fp
 			for _, name := range symbs.simpleTypeMap.Order() {
 				symbol := symbs.simpleTypeMap.MustGet(name)
-				genCtx.ParseSchemaSimpleType(symbol.Symbol, symbol.FileName)
+				r.ParseSchemaSimpleType(symbol.Symbol, symbol.FileName)
 			}
 		}()
 
@@ -207,19 +204,34 @@ func GenAllSymbolText() {
 			os.Stdout = fp
 			for _, name := range symbs.complexTypeMap.Order() {
 				symbol := symbs.complexTypeMap.MustGet(name)
-				genCtx.ParseSchemaComplexType(symbol.Symbol, symbol.FileName)
+				r.ParseSchemaComplexType(symbol.Symbol, symbol.FileName)
 			}
 		}()
 	}
 
-	fp, err := os.Create(filepath.Join("output", "record.go"))
+	Debug()
+
+	// 生成 SDK
+	Generate(r, filepath.Join("output", "record.go"))
+}
+
+func ioredirect(fp *os.File) func() {
+	save := os.Stdout
+	os.Stdout = fp
+	return func() {
+		os.Stdout = save
+	}
+}
+
+func Generate(r *Renderer, output string) {
+	fp, err := os.Create(output)
 	if err != nil {
 		panic(err)
 	}
 	defer fp.Close()
-	os.Stdout = fp
+	defer ioredirect(fp)()
 
-	for _, ns := range gs.namespaceMap.Order() {
+	for _, ns := range r.gs.namespaceMap.Order() {
 		fmt.Printf("// %s: %s\n", GlobalNSMap[ns], ns)
 	}
 	fmt.Printf("\n")
@@ -229,7 +241,7 @@ func GenAllSymbolText() {
 
 	// 类型定义
 	fallbackMap := make(map[string]struct{})
-	for _, block := range genCtx.defBlocks {
+	for _, block := range r.defBlocks {
 		if block.Fallback {
 			blockPrefix := GlobalNSMap[block.NS]
 			block.Name = strings.ReplaceAll(block.Name, "-", "_")
@@ -237,7 +249,7 @@ func GenAllSymbolText() {
 			fallbackMap[block.CodeName] = struct{}{}
 		}
 	}
-	for _, block := range genCtx.defBlocks {
+	for _, block := range r.defBlocks {
 		// fmt.Println(block.Name)
 		blockPrefix := GlobalNSMap[block.NS]
 		block.Name = strings.ReplaceAll(block.Name, "-", "_")
@@ -279,9 +291,9 @@ func GenAllSymbolText() {
 				}
 
 				if def.MaxOccurs == -1 || def.MaxOccurs > 1 {
-					fmt.Printf("    %s []*%s\n", def.CodeName, def.CodeTypeName)
+					fmt.Printf("    %s []*%s // %s\n", def.CodeName, def.CodeTypeName, def.Path)
 				} else {
-					fmt.Printf("    %s *%s\n", def.CodeName, def.CodeTypeName)
+					fmt.Printf("    %s *%s // %s\n", def.CodeName, def.CodeTypeName, def.Path)
 				}
 			}
 			for _, attr := range block.Attrs.Order() {
@@ -312,7 +324,7 @@ func GenAllSymbolText() {
 				}
 				fmt.Printf("    %s *%s\n", def.CodeName, def.CodeTypeName)
 			}
-			fmt.Println("}\n")
+			fmt.Printf("}\n")
 		} else {
 			fmt.Printf("type %s string\n\n", block.CodeName)
 		}
@@ -501,8 +513,31 @@ func GenAllSymbolText() {
 			fmt.Printf("}\n\n")
 		}
 	}
+}
 
-	fmt.Println("exit")
+var stdout = os.Stdout
+
+func Debug() {
+	defer ioredirect(stdout)()
+	// for def, c := range chrec2 {
+	// 	if def.NS == XSNamespace {
+	// 		continue
+	// 	}
+	// 	fmt.Printf("%s | %s: %d\n", def.Name, def.NS, c)
+	// }
+
+	// m := map[string]any{
+	// 	"s": "\uf0fc",
+	// }
+	// en := json.NewEncoder(os.Stdout)
+	// en.Encode(m)
+
+	// http.HandleFunc("/test", func(w http.ResponseWriter, r *http.Request) {
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	en := json.NewEncoder(w)
+	// 	en.Encode(m)
+	// })
+	// http.ListenAndServe(":8080", nil)
 }
 
 func Test() {
@@ -512,7 +547,8 @@ func Test() {
 	fmt.Println("--------------")
 	epsld.ReadFromBytes(data.PSld)
 
-	psld := proto.NewP_CT_Slide(nil)
+	// psld := proto.NewP_CT_Slide(nil)
+	psld := proto.NewXMLElementRaw(nil)
 	psld.UnmarshalXML(epsld.Root())
 
 	root := psld.MarshalXML(
